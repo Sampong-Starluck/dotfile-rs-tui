@@ -97,8 +97,8 @@ fn run(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> color_eyre
     Ok(())
 }
 
-fn reset_tab_state(app: &mut App) {
-    // Reset application tab focus
-    app.app_focus = AppFocus::Section;
-    app.app_custom_input.clear();
-}
+// fn reset_tab_state(app: &mut App) {
+//     // Reset application tab focus
+//     app.app_focus = AppFocus::Section;
+//     app.app_custom_input.clear();
+// }

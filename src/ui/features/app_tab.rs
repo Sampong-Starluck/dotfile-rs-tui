@@ -468,14 +468,14 @@ fn handle_custom_input_keys(app: &mut App, key: KeyEvent) {
     }
 }
 
-fn handle_installing_keys(app: &mut App, key: KeyEvent) {
-    if key.code == KeyCode::Esc {
-        app.app_installing = false;
-        app.app_focus = AppFocus::Section;
-    }
-}
+// fn handle_installing_keys1(app: &mut App, key: KeyEvent) {
+//     if key.code == KeyCode::Esc {
+//         app.app_installing = false;
+//         app.app_focus = AppFocus::Section;
+//     }
+// }
 
-fn handle_installing_keys1(app: &mut App, key: KeyEvent) {
+fn handle_installing_keys(app: &mut App, key: KeyEvent) {
     if key.code == KeyCode::Esc {
         app.app_installing = false;
         app.app_installing = false;

@@ -41,7 +41,6 @@ pub fn render(app: &mut App, frame: &mut Frame) {
 pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
     use ratatui::{
         text::{Line, Span},
-        style::{Color, Style},
         widgets::Paragraph,
     };
 

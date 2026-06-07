@@ -40,7 +40,7 @@ pub fn shell_render(frame: &mut Frame, _sidebar: Rect, _body: Rect, _app: &App) 
 }
 
 // src/ui/features/shell_tab.rs
-pub fn handle_key(app: &mut App, key: KeyEvent) {
+pub fn handle_key(_app: &mut App, key: KeyEvent) {
     match key.code {
         // shell-specific keys later
         _ => {}
