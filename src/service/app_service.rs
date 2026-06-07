@@ -125,3 +125,9 @@ pub fn install_command(mgr: &str, pkg: &str) -> String {
         _              => format!("{} install {}", mgr, pkg),
     }
 }
+pub fn requires_interactive(mgr: &str) -> bool {
+    matches!(mgr,
+        "pacman" | "apt" | "apt-get" | "dnf" | "yum" | "xbps-install" | "apk" |
+        "yay" | "paru"
+    )
+}

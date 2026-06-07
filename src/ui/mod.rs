@@ -81,8 +81,12 @@ pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
                 plain(" cancel"),
             ],
             AppFocus::Installing => vec![
+                styled_key("type"),
+                plain(" respond to prompt  "),
+                styled_key("Enter"),
+                plain(" send  "),
                 styled_key("Esc"),
-                plain(" close install log"),
+                plain(" close"),
             ],
             AppFocus::SudoConfirm => vec![
                 styled_key("y"),

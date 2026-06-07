@@ -2,6 +2,7 @@ use std::{
     collections::HashSet,
     sync::mpsc::Receiver
 };
+use std::sync::mpsc::Sender;
 use crate::{
     enumerate::AppFocus,
     models::{Apps, OperatingSystem, PackageManager, TabModel}
@@ -29,6 +30,8 @@ pub struct App {
     pub app_sudo_pending: bool,        // waiting for sudo confirmation
     pub app_sudo_command: Vec<String>, // commands queued pending confirmation
     pub app_sudo_password: String,  // sudo password input buffer
+    pub install_tx:       Option<Sender<String>>,   // app → process stdin
+    pub install_input:    String,                   // current input buffer
 }
 
 impl App {
@@ -55,6 +58,8 @@ impl App {
             app_sudo_pending: false,
             app_sudo_command: Vec::new(),
             app_sudo_password: String::new(),
+            install_tx:    None,
+            install_input: String::new()
         }
     }
     /// Cycle to the next available package manager and invalidate app cache

@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use crate::app::App;
 use crate::models::Apps;
-use crate::service::{filter_apps_by_platform, get_install_command, install_command, is_root, read_apps_json, requires_sudo};
+use crate::service::{filter_apps_by_platform, get_install_command, install_command, is_root, read_apps_json, requires_interactive, requires_sudo};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -200,27 +200,72 @@ fn render_custom_input(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 fn render_install_modal(frame: &mut Frame, app: &App) {
-    // Center a modal over the whole terminal
-    let area = centered_rect(70, 60, frame.area());
-
-    // Clear background behind modal
+    let area = centered_rect(70, 70, frame.area());
     frame.render_widget(Clear, area);
 
+    // Split into log area + input box
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Fill(1),    // scrolling log
+            Constraint::Length(3),  // input box
+        ])
+        .split(area);
+
+    // Log output
     let log_text: Vec<Line> = app.app_install_log
         .iter()
-        .map(|l| Line::from(Span::styled(l.clone(), Style::default().fg(Color::Green))))
+        .map(|l| {
+            let style = if l.starts_with("✓") {
+                Style::default().fg(Color::Green)
+            } else if l.starts_with("✗") || l.starts_with("[err]") {
+                Style::default().fg(Color::Red)
+            } else if l.starts_with("▶") {
+                Style::default().fg(Color::Cyan)
+            } else if l.starts_with("═") {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            Line::from(Span::styled(l.clone(), style))
+        })
         .collect();
 
-    let modal = Paragraph::new(log_text)
+    // Auto-scroll to bottom
+    let scroll_offset = (log_text.len() as u16)
+        .saturating_sub(chunks[0].height.saturating_sub(2));
+
+    let log = Paragraph::new(log_text)
+        .scroll((scroll_offset, 0))
         .wrap(Wrap { trim: false })
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Installing... (Esc to close) ")
+                .title(" Installing... ")
                 .border_style(Style::default().fg(Color::Yellow)),
         );
 
-    frame.render_widget(modal, area);
+    frame.render_widget(log, chunks[0]);
+
+    // Input box
+    let input_display = if app.install_input.is_empty() {
+        Span::styled("▌", Style::default().fg(Color::DarkGray))
+    } else {
+        Span::styled(
+            format!("{}▌", app.install_input),
+            Style::default().fg(Color::White),
+        )
+    };
+
+    let input_box = Paragraph::new(Line::from(input_display))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Response (y/n/Enter) ")
+                .border_style(Style::default().fg(Color::Cyan)),
+        );
+
+    frame.render_widget(input_box, chunks[1]);
 }
 
 /// Returns a centered Rect of given percentage width/height
@@ -258,21 +303,14 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 
 fn handle_sudo_confirm_keys(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Char(c) => {
-            app.app_sudo_password.push(c);
-        }
-        KeyCode::Backspace => {
-            app.app_sudo_password.pop();
-        }
+        KeyCode::Char(c) => { app.app_sudo_password.push(c); }
+        KeyCode::Backspace => { app.app_sudo_password.pop(); }
         KeyCode::Enter => {
-            if app.app_sudo_password.is_empty() {
-                return; // don't proceed without password
-            }
+            if app.app_sudo_password.is_empty() { return; }
             let password = app.app_sudo_password.clone();
-            app.app_sudo_password.clear(); // clear immediately after use
+            app.app_sudo_password.clear();
             app.app_sudo_pending = false;
-            app.app_focus = AppFocus::Installing;
-            execute_install_with_password(app, password);
+            execute_install_interactive(app, Some(password)); // ← renamed
         }
         KeyCode::Esc => {
             app.app_sudo_pending = false;
@@ -287,19 +325,28 @@ fn handle_sudo_confirm_keys(app: &mut App, key: KeyEvent) {
 fn execute_install_with_password(app: &mut App, password: String) {
     let commands = app.app_sudo_command
         .drain(..)
-        .map(|cmd| format!("sudo -S {}", cmd)) // -S reads password from stdin
+        .map(|cmd| format!("sudo -S {}", cmd))
         .collect::<Vec<_>>();
 
     app.app_install_log.clear();
     app.app_install_log.push("Starting installation...".to_string());
+    app.app_install_log.push("Type y/n or Enter to respond to prompts.".to_string());
     app.app_installing = true;
 
-    let (tx, rx) = mpsc::channel::<String>();
-    app.install_rx = Some(rx);
+    let (out_tx, out_rx) = mpsc::channel::<String>(); // process → app
+    let (in_tx, in_rx)   = mpsc::channel::<String>(); // app → process
+
+    app.install_rx = Some(out_rx);
+    app.install_tx = Some(in_tx);
+
+    let password_clone: Option<String> = Some(password.clone());
 
     thread::spawn(move || {
+        // password_clone is moved into this closure via the `move` keyword
+        let in_rx = Arc::new(Mutex::new(in_rx));
+
         for cmd in commands {
-            let _ = tx.send(format!("▶ Running: {}", cmd));
+            let _ = out_tx.send(format!("▶ Running: {}", cmd));
 
             let mut parts = cmd.splitn(2, ' ');
             let binary = match parts.next() {
@@ -315,48 +362,152 @@ fn execute_install_with_password(app: &mut App, password: String) {
 
             match Command::new(&binary)
                 .args(&args)
-                .stdin(Stdio::piped())   // ← pipe password in
+                .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .spawn()
             {
                 Ok(mut child) => {
-                    // Write password to stdin for sudo -S
                     if let Some(mut stdin) = child.stdin.take() {
                         use std::io::Write;
-                        let _ = writeln!(stdin, "{}", password);
+
+                        if let Some(ref pwd) = password_clone {
+                            let _ = writeln!(stdin, "{}", pwd);
+                        }
+
+                        let in_rx_clone = Arc::clone(&in_rx);
+                        thread::spawn(move || loop {
+                            match in_rx_clone.lock().unwrap().recv() {
+                                Ok(input) => { let _ = writeln!(stdin, "{}", input); }
+                                Err(_)    => break,
+                            }
+                        });
                     }
+
                     if let Some(stdout) = child.stdout.take() {
                         for line in BufReader::new(stdout).lines().flatten() {
-                            if tx.send(line).is_err() { return; }
+                            if out_tx.send(line).is_err() { return; }
                         }
                     }
+
                     if let Some(stderr) = child.stderr.take() {
                         for line in BufReader::new(stderr).lines().flatten() {
-                            // Filter out sudo password prompt from output
                             if !line.contains("[sudo]") && !line.contains("password for") {
-                                if tx.send(format!("[err] {}", line)).is_err() { return; }
+                                if out_tx.send(format!("[err] {}", line)).is_err() { return; }
                             }
                         }
                     }
+
                     match child.wait() {
-                        Ok(s) if s.success() => {
-                            let _ = tx.send(format!("✓ Done: {}", binary));
-                        }
-                        Ok(s) => {
-                            let _ = tx.send(format!("✗ Failed (exit {})", s));
-                        }
-                        Err(e) => {
-                            let _ = tx.send(format!("✗ Error: {}", e));
-                        }
+                        Ok(s) if s.success() => { let _ = out_tx.send(format!("✓ Done: {}", binary)); }
+                        Ok(s)                => { let _ = out_tx.send(format!("✗ Failed (exit {})", s)); }
+                        Err(e)               => { let _ = out_tx.send(format!("✗ Error: {}", e)); }
                     }
                 }
-                Err(e) => {
-                    let _ = tx.send(format!("✗ Could not run {}: {}", binary, e));
-                }
+                Err(e) => { let _ = out_tx.send(format!("✗ Could not run {}: {}", binary, e)); }
             }
         }
-        let _ = tx.send("═══ All done ═══".to_string());
+        let _ = out_tx.send("═══ All done ═══".to_string());
+    }); // ← password_clone is captured here by the move closure
+}
+
+fn execute_install_interactive(app: &mut App, password: Option<String>) {
+    let commands = if password.is_some() {
+        // sudo managers — prepend sudo -S
+        app.app_sudo_command
+            .drain(..)
+            .map(|cmd| format!("sudo -S {}", cmd))
+            .collect::<Vec<_>>()
+    } else {
+        build_commands(app)
+    };
+
+    app.app_install_log.clear();
+    app.app_install_log.push("Starting installation...".to_string());
+    if requires_interactive(app.active_package_manager()) {
+        app.app_install_log.push(
+            "Type y/n and press Enter to respond to prompts.".to_string()
+        );
+    }
+    app.app_installing = true;
+    app.app_focus = AppFocus::Installing;
+
+    let (out_tx, out_rx) = mpsc::channel::<String>();
+    let (in_tx, in_rx)   = mpsc::channel::<String>();
+
+    app.install_rx = Some(out_rx);
+    app.install_tx = Some(in_tx);
+
+    let password_clone: Option<String> = password.clone();
+
+    thread::spawn(move || {
+        // Wrap ONCE before the loop, not inside it
+        let in_rx = Arc::new(Mutex::new(in_rx));
+
+        for cmd in commands {
+            let _ = out_tx.send(format!("▶ Running: {}", cmd));
+
+            let mut parts = cmd.splitn(2, ' ');
+            let binary = match parts.next() {
+                Some(b) => b.to_string(),
+                None => continue,
+            };
+            let args: Vec<String> = parts
+                .next()
+                .unwrap_or("")
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect();
+
+            match Command::new(&binary)
+                .args(&args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+            {
+                Ok(mut child) => {
+                    if let Some(mut stdin) = child.stdin.take() {
+                        use std::io::Write;
+
+                        if let Some(ref pwd) = password_clone {
+                            let _ = writeln!(stdin, "{}", pwd);
+                        }
+
+                        // Clone the Arc each iteration, not the Receiver
+                        let in_rx_clone = Arc::clone(&in_rx);
+                        thread::spawn(move || loop {
+                            match in_rx_clone.lock().unwrap().recv() {
+                                Ok(input) => { let _ = writeln!(stdin, "{}", input); }
+                                Err(_)    => break,
+                            }
+                        });
+                    }
+
+                    if let Some(stdout) = child.stdout.take() {
+                        for line in BufReader::new(stdout).lines().flatten() {
+                            if out_tx.send(line).is_err() { return; }
+                        }
+                    }
+
+                    if let Some(stderr) = child.stderr.take() {
+                        for line in BufReader::new(stderr).lines().flatten() {
+                            if !line.contains("[sudo]") && !line.contains("password for") {
+                                if out_tx.send(format!("[err] {}", line)).is_err() { return; }
+                            }
+                        }
+                    }
+
+                    match child.wait() {
+                        Ok(s) if s.success() => { let _ = out_tx.send(format!("✓ Done: {}", binary)); }
+                        Ok(s)                => { let _ = out_tx.send(format!("✗ Failed (exit {})", s)); }
+                        Err(e)               => { let _ = out_tx.send(format!("✗ Error: {}", e)); }
+                    }
+                }
+                Err(e) => { let _ = out_tx.send(format!("✗ Could not run {}: {}", binary, e)); }
+            }
+        }
+        let _ = out_tx.send("═══ All done ═══".to_string());
     });
 }
 
@@ -476,13 +627,37 @@ fn handle_custom_input_keys(app: &mut App, key: KeyEvent) {
 // }
 
 fn handle_installing_keys(app: &mut App, key: KeyEvent) {
-    if key.code == KeyCode::Esc {
-        app.app_installing = false;
-        app.app_installing = false;
-        app.app_focus = AppFocus::Section;
-        app.install_rx = None;          // drop channel
-        app.app_selected_ids.clear();   // clear selection after install
-        app.app_install_log.clear();
+    match key.code {
+        // Type response
+        KeyCode::Char(c) => {
+            app.install_input.push(c);
+        }
+        KeyCode::Backspace => {
+            app.install_input.pop();
+        }
+        // Send input to process stdin
+        KeyCode::Enter => {
+            let input = app.install_input.trim().to_string();
+            app.install_input.clear();
+
+            // Echo to log so user sees what they typed
+            app.app_install_log.push(format!("> {}", input));
+
+            if let Some(tx) = &app.install_tx {
+                let _ = tx.send(input);
+            }
+        }
+        // Close modal
+        KeyCode::Esc => {
+            app.app_installing = false;
+            app.app_focus = AppFocus::Section;
+            app.install_rx = None;
+            app.install_tx = None;
+            app.install_input.clear();
+            app.app_selected_ids.clear();
+            app.app_install_log.clear();
+        }
+        _ => {}
     }
 }
 

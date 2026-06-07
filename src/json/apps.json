@@ -26,7 +26,7 @@
         "platforms": {
           "windows": { "winget": "Eugeny.Tabby", "choco": "tabby", "scoop": "tabby" },
           "macos":   { "brew": "tabby" },
-          "linux":   { "apt": "tabby", "pacman": "tabby-bin" }
+          "linux":   { "apt": "tabby", "pacman": "tabby-bin" , "yay": "tabby-bin" }
         }
       },
       {
@@ -35,7 +35,7 @@
         "platforms": {
           "windows": { "winget": "Git.Git", "choco": "git", "scoop": "git" },
           "macos":   { "brew": "git" },
-          "linux":   { "apt": "git", "dnf": "git", "pacman": "git", "xbps": "git" }
+          "linux":   { "apt": "git", "dnf": "git", "pacman": "git", "yay": "git-git", "xbps": "git" }
         }
       },
       {
@@ -44,7 +44,7 @@
         "platforms": {
           "windows": { "winget": "JanDeDobbeleer.OhMyPosh", "scoop": "oh-my-posh" },
           "macos":   { "brew": "oh-my-posh" },
-          "linux":   { "brew": "oh-my-posh" }
+          "linux":   { "brew": "oh-my-posh", "yay": "git-git"}
         }
       },
       {
@@ -83,7 +83,7 @@
         "platforms": {
           "windows": { "winget": "Zen-Team.Zen-Browser.Twilight" },
           "macos":   { "brew": "zen-browser" },
-          "linux":   { "pacman": "zen-browser-bin" }
+          "linux":   { "pacman": "zen-browser-bin", "yay": "zen-browser-bin" }
         }
       },
       {
@@ -110,7 +110,7 @@
         "platforms": {
           "windows": { "winget": "Brave.Brave.Nightly", "choco": "brave", "scoop": "brave" },
           "macos":   { "brew": "brave-browser" },
-          "linux":   { "apt": "brave-browser", "dnf": "brave-browser", "pacman": "brave-bin" }
+          "linux":   { "apt": "brave-browser", "dnf": "brave-browser", "pacman": "brave-bin", "yay": "brave-origin-bin " }
         }
       },
       {
@@ -119,7 +119,7 @@
         "platforms": {
           "windows": { "winget": "LibreWolf.LibreWolf", "choco": "librewolf", "scoop": "librewolf" },
           "macos":   { "brew": "librewolf" },
-          "linux":   { "apt": "librewolf", "pacman": "librewolf", "dnf": "librewolf" }
+          "linux":   { "apt": "librewolf", "pacman": "librewolf", "yay": "librewolf", "dnf": "librewolf" }
         }
       }
     ]
@@ -133,7 +133,7 @@
         "platforms": {
           "windows": { "winget": "Microsoft.VisualStudioCode", "choco": "vscode", "scoop": "vscode" },
           "macos":   { "brew": "visual-studio-code" },
-          "linux":   { "apt": "code", "dnf": "code", "pacman": "visual-studio-code-bin", "xbps": "vscode" }
+          "linux":   { "apt": "code", "dnf": "code", "pacman": "visual-studio-code-bin", "yay": "visual-studio-code-bin", "xbps": "vscode" }
         }
       },
       {
@@ -149,7 +149,7 @@
         "platforms": {
           "windows": { "winget": "Helix.Helix", "scoop": "helix", "choco": "helix" },
           "macos":   { "brew": "helix" },
-          "linux":   { "apt": "helix", "dnf": "helix", "pacman": "helix", "xbps": "helix" }
+          "linux":   { "apt": "helix", "dnf": "helix", "pacman": "helix", "yay": "helix-git ", "xbps": "helix" }
         }
       },
       {
@@ -158,7 +158,7 @@
         "platforms": {
           "windows": { "winget": "Neovim.Neovim", "choco": "neovim", "scoop": "neovim" },
           "macos":   { "brew": "neovim" },
-          "linux":   { "apt": "neovim", "dnf": "neovim", "pacman": "neovim", "xbps": "neovim" }
+          "linux":   { "apt": "neovim", "dnf": "neovim", "pacman": "neovim", "yay": "neovim-git ", "xbps": "neovim" }
         }
       },
       {
@@ -167,7 +167,7 @@
         "platforms": {
           "windows": { "winget": "vim.vim", "choco": "vim", "scoop": "vim" },
           "macos":   { "brew": "vim" },
-          "linux":   { "apt": "vim", "dnf": "vim", "pacman": "vim", "xbps": "vim" }
+          "linux":   { "apt": "vim", "dnf": "vim", "pacman": "vim", "yay": "vim-git ", "xbps": "vim" }
         }
       },
       {
@@ -175,7 +175,7 @@
         "id": "zed",
         "platforms": {
           "macos":   { "brew": "zed" },
-          "linux":   { "pacman": "zed" }
+          "linux":   { "pacman": "zed", "yay": "zed-git" }
         }
       }
     ]
@@ -189,7 +189,7 @@
         "platforms": {
           "windows": { "winget": "Telegram.TelegramDesktop", "choco": "telegram", "scoop": "telegram" },
           "macos":   { "brew": "telegram" },
-          "linux":   { "apt": "telegram-desktop", "dnf": "telegram-desktop", "pacman": "telegram-desktop", "xbps": "telegram-desktop" }
+          "linux":   { "apt": "telegram-desktop", "dnf": "telegram-desktop", "pacman": "telegram-desktop", "yay": "telegram-desktop-bin ", "xbps": "telegram-desktop" }
         }
       },
       {
@@ -207,7 +207,7 @@
         "platforms": {
           "windows": { "winget": "JetBrains.Toolbox", "choco": "jetbrains-toolbox", "scoop": "jetbrains-toolbox" },
           "macos":   { "brew": "jetbrains-toolbox" },
-          "linux":   { "pacman": "jetbrains-toolbox" }
+          "linux":   { "pacman": "jetbrains-toolbox", "yay": "jetbrains-toolbox" }
         }
       },
       {
@@ -216,7 +216,7 @@
         "platforms": {
           "windows": { "winget": "Zoom.Zoom", "choco": "zoom", "scoop": "zoom" },
           "macos":   { "brew": "zoom" },
-          "linux":   { "apt": "zoom", "dnf": "zoom", "pacman": "zoom" }
+          "linux":   { "apt": "zoom", "dnf": "zoom", "pacman": "zoom", "yay": "zoom" }
         }
       },
       {
@@ -232,7 +232,7 @@
         "platforms": {
           "windows": { "winget": "VideoLAN.VLC", "choco": "vlc", "scoop": "vlc" },
           "macos":   { "brew": "vlc" },
-          "linux":   { "apt": "vlc", "dnf": "vlc", "pacman": "vlc", "xbps": "vlc" }
+          "linux":   { "apt": "vlc", "dnf": "vlc", "pacman": "vlc", "yay": "vlc-git", "xbps": "vlc" }
         }
       }
     ]
@@ -246,7 +246,7 @@
         "platforms": {
           "windows": { "winget": "version-fox.vfox", "scoop": "vfox" },
           "macos":   { "brew": "vfox" },
-          "linux":   { "apt": "vfox", "pacman": "vfox" }
+          "linux":   { "apt": "vfox", "dnf": "vfox", "pacman": "vfox" }
         }
       },
       {
@@ -264,7 +264,7 @@
         "platforms": {
           "windows": { "winget": "jdx.mise", "choco": "mise", "scoop": "mise" },
           "macos":   { "brew": "mise" },
-          "linux":   { "apt": "mise", "pacman": "mise" }
+          "linux":   { "apt": "mise", "pacman": "mise", "yay": "mise-bin" }
         }
       },
       {
@@ -272,7 +272,7 @@
         "id": "asdf",
         "platforms": {
           "macos":   { "brew": "asdf" },
-          "linux":   { "apt": "asdf", "pacman": "asdf-vm" }
+          "linux":   { "apt": "asdf", "pacman": "asdf-vm", "yay": "asdf-vm" }
         }
       }
     ]
@@ -286,7 +286,7 @@
         "platforms": {
           "windows": { "winget": "Microsoft.CascadiaCode.NF", "choco": "cascadiacode-nf", "scoop": "CascadiaCode-NF" },
           "macos":   { "brew": "font-cascadia-code-nf" },
-          "linux":   { "pacman": "ttf-cascadia-code-nerd", "apt": "fonts-cascadia-code" }
+          "linux":   { "pacman": "ttf-cascadia-code-nerd", "yay": "ttf-cascadia-code-git", "apt": "fonts-cascadia-code" }
         }
       },
       {
