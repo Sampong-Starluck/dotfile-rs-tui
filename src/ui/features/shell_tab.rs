@@ -1,10 +1,11 @@
+use crossterm::event::KeyEvent;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::prelude::{Color, Style};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use crate::app::App;
 
-pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &App) {
+pub fn shell_render(frame: &mut Frame, _sidebar: Rect, _body: Rect, _app: &App) {
     let area = frame.area();
 
     // Create a vertical split: one centered panel
@@ -36,4 +37,12 @@ pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &App) {
         .wrap(Wrap { trim: false });
 
     frame.render_widget(panel, panel_area);
+}
+
+// src/ui/features/shell_tab.rs
+pub fn handle_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        // shell-specific keys later
+        _ => {}
+    }
 }

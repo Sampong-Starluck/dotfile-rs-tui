@@ -1,6 +1,6 @@
-use std::fmt;
 // models/package_manager.rs
 use crate::models::os::{LinuxDistro, OperatingSystem};
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PackageManager {
@@ -110,7 +110,7 @@ impl PackageManager {
     }
 
     /// All known package managers to probe
-    pub fn all() -> &'static [PackageManager] {
+    /*pub fn all() -> &'static [PackageManager] {
         &[
             Self::Winget,
             Self::Apt,
@@ -120,7 +120,7 @@ impl PackageManager {
             Self::Xbps,
             Self::Brew,   // ← add this
         ]
-    }
+    }*/
 
     /// Check if this package manager is available on the current system
     pub fn is_available(&self) -> bool {

@@ -1,19 +1,33 @@
 use std::io::stdout;
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind};
-use crossterm::{event, execute};
-use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
-use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
-use crate::app::App;
-use crate::models::TabModel;
+use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
+    event,
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}
+};
+use ratatui::{
+    backend::CrosstermBackend,
+    Terminal
+};
+use crate::{
+    app::App,
+    enumerate::AppFocus,
+    models::TabModel
+};
 
 mod app;
 mod ui;
 mod models;
-mod features;
+mod logging;
+mod service;
+mod enumerate;
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
+    
+    // enable log
+    logging::init();
+    tracing::info!("Starting RataTUI application ....");
 
     // Manual terminal setup instead of ratatui::init()
     // so we control the exact sequence
@@ -42,31 +56,34 @@ fn main() -> color_eyre::Result<()> {
 
 fn run(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> color_eyre::Result<()> {
     let mut app = App::new();
-
     while app.running {
-        terminal.draw(|frame| ui::render(&app, frame))?;
-
+        terminal.draw(|frame| ui::render(&mut app, frame))?;
         match event::read()? {
             Event::Key(key) => {
                 // Global keys
                 match key.code {
-                    KeyCode::Tab       => app.active_tab = app.active_tab.next(),
-                    KeyCode::BackTab   => app.active_tab = app.active_tab.prev(),
+                    KeyCode::Tab => {
+                        app.app_focus = AppFocus::Section; // reset FIRST
+                        app.app_custom_input.clear();
+                        app.active_tab = app.active_tab.next();
+                    }
+                    KeyCode::BackTab => {
+                        app.app_focus = AppFocus::Section; // reset FIRST
+                        app.app_custom_input.clear();
+                        app.active_tab = app.active_tab.prev();
+                    }
+                    KeyCode::Char('p') => {
+                        app.cycle_package_manager();
+                    }
                     KeyCode::Char('q') => app.running = false,
-                    _ => {}
-                }
-
-                // Tab-specific keys
-                match app.active_tab {
-                    TabModel::Home => match key.code {
-                        KeyCode::Down | KeyCode::Char('j') => app.next_pkg(),
-                        KeyCode::Up   | KeyCode::Char('k') => app.previous_pkg(),
-                        _ => {}
-                    },
-                    _ => {}
+                    // Delegate to active tab
+                    _ => match app.active_tab {
+                        TabModel::Home        => ui::features::home_handle_key(&mut app, key),
+                        TabModel::Application => ui::features::app_handle_key(&mut app, key),
+                        TabModel::Shell       => ui::features::shell_handle_key(&mut app, key),
+                    }
                 }
             }
-
             Event::Mouse(mouse) => {
                 match mouse.kind {
                     MouseEventKind::ScrollDown => app.scroll_down(),
@@ -74,10 +91,14 @@ fn run(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> color_eyre
                     _ => {}
                 }
             }
-
             _ => {}
         }
     }
-
     Ok(())
+}
+
+fn reset_tab_state(app: &mut App) {
+    // Reset application tab focus
+    app.app_focus = AppFocus::Section;
+    app.app_custom_input.clear();
 }

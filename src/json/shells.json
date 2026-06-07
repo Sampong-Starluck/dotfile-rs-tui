@@ -1,0 +1,48 @@
+{
+  "shells": [
+    {
+      "id": "all",
+      "name": "All Shells",
+      "hidden": false,
+      "function": "",
+      "description": "Configure all available shells",
+      "order": 0
+    },
+    {
+      "id": "powershell",
+      "name": "PowerShell 7",
+      "hidden": false,
+      "function": "Set-Posh",
+      "description": "Configure PowerShell profile and modules",
+      "order": 1,
+      "requires": ["oh-my-posh"]
+    },
+    {
+      "id": "nushell",
+      "name": "NuShell",
+      "hidden": false,
+      "function": "Set-Nu",
+      "description": "Configure NuShell environment",
+      "order": 2,
+      "requires": ["oh-my-posh"]
+    },
+    {
+      "id": "bash",
+      "name": "Bash",
+      "hidden": false,
+      "function": "Set-Bash",
+      "description": "Configure Bash profile and aliases",
+      "order": 3
+    },
+    {
+      "id": "fish",
+      "name": "Fish Shell",
+      "hidden": true,
+      "function": "Set-Fish",
+      "description": "Configure Fish shell (experimental)",
+      "order": 99
+    }
+  ],
+  "version": "1.0.0",
+  "lastUpdated": "2025-08-23"
+}

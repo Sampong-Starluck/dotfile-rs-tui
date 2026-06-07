@@ -1,3 +1,4 @@
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     text::{Line, Span},
     style::{Color, Modifier, Style},
@@ -10,6 +11,25 @@ use crate::app::App;
 pub fn home_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &App) {
     render_sidebar(frame, sidebar, app);
     render_body(frame, body, app);
+}
+
+// src/ui/features/home_tab.rs
+pub fn handle_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.next_pkg();
+            app.apps = None; // reload app list with new pkg manager filter
+            app.app_selected_section = 0;
+            app.app_selected_app = 0;
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.previous_pkg();
+            app.apps = None;
+            app.app_selected_section = 0;
+            app.app_selected_app = 0;
+        }
+        _ => {}
+    }
 }
 
 fn render_sidebar(frame: &mut Frame, area: Rect, app: &App) {
