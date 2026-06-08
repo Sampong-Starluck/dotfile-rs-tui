@@ -13,11 +13,8 @@ pub(crate) mod features;
 use super::ui::{layout::default_layout, tabs::render_tab};
 
 pub fn render(app: &mut App, frame: &mut Frame) {
-    use ratatui::widgets::Block;
-    frame.render_widget(
-        Block::default().style(Style::default().fg(Color::Reset).bg(Color::Reset)),
-        frame.area(),
-    );
+    use ratatui::widgets::Clear;
+    frame.render_widget(Clear, frame.area());
 
     let area = default_layout(frame);
     render_tab(frame, area.tabs, app.active_tab);
@@ -30,13 +27,6 @@ pub fn render(app: &mut App, frame: &mut Frame) {
 
     render_status(frame, area.status, app);
 }
-
-// fn render_header(frame: &mut Frame, area: ratatui::layout::Rect) {
-//     use ratatui::widgets::{Block, Paragraph};
-//     let block = Paragraph::new(" My App")
-//         .block(Block::bordered());
-//     frame.render_widget(block, area);
-// }
 
 pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
     use ratatui::{
@@ -64,7 +54,7 @@ pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
                 styled_key("Space"),
                 plain(" toggle select  "),
                 styled_key("i"),
-                plain(" custom app  "),
+                plain(" search  "),
                 styled_key("d"),
                 plain(" install  "),
                 styled_key("Esc"),
@@ -72,13 +62,26 @@ pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
             ],
             AppFocus::CustomInput => vec![
                 styled_key("type"),
-                plain(" enter app id  "),
+                plain(" enter package name  "),
                 styled_key("Space"),
                 plain(" add to list  "),
                 styled_key("Enter"),
                 plain(" confirm  "),
                 styled_key("Esc"),
                 plain(" cancel"),
+            ],
+            // Winget search panel hints
+            AppFocus::Search => vec![
+                styled_key("type"),
+                plain(" edit query  "),
+                styled_key("Enter"),
+                plain(" search  "),
+                styled_key("↑↓/jk"),
+                plain(" navigate results  "),
+                styled_key("Space"),
+                plain(" select  "),
+                styled_key("Esc"),
+                plain(" close search"),
             ],
             AppFocus::Installing => vec![
                 styled_key("type"),
@@ -89,10 +92,10 @@ pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
                 plain(" close"),
             ],
             AppFocus::SudoConfirm => vec![
-                styled_key("y"),
-                plain(" confirm sudo  "),
-                styled_key("n"),
-                plain(" cancel  "),
+                styled_key("type"),
+                plain(" enter password  "),
+                styled_key("Enter"),
+                plain(" confirm  "),
                 styled_key("Esc"),
                 plain(" cancel"),
             ],
