@@ -6,6 +6,7 @@ use ratatui::{
     Frame,
     widgets::{Block, Tabs}
 };
+use ratatui::widgets::Borders;
 use crate::models::TabModel;
 
 pub fn render_tab(frame: &mut Frame, area: Rect, active: TabModel) {
@@ -18,6 +19,9 @@ pub fn render_tab(frame: &mut Frame, area: Rect, active: TabModel) {
 
     let tabs = Tabs::new(titles)
         .block(Block::bordered().title(" Navigation "))
+        // .block(Block::default()
+        //     .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
+        //     .title(" Navigation "))
         .select(selected)
         .highlight_style(
             Style::default()
