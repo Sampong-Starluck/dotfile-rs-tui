@@ -36,30 +36,54 @@ pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
 
     let hints: Vec<Span> = match app.active_tab {
         TabModel::Application => match app.app_focus {
-            AppFocus::Section => vec![
+            AppFocus::PmPicker => vec![
                 styled_key("↑↓/jk"),
                 plain(" navigate  "),
-                styled_key("Space/Enter"),
-                plain(" open section  "),
-                styled_key("p"),
-                plain(" switch pkg manager  "),
-                styled_key("d"),
-                plain(" install selected  "),
-                styled_key("Tab"),
-                plain(" switch tab"),
-            ],
-            AppFocus::Apps => vec![
-                styled_key("↑↓/jk"),
-                plain(" navigate  "),
-                styled_key("Space"),
-                plain(" toggle select  "),
-                styled_key("i"),
-                plain(" search  "),
-                styled_key("d"),
-                plain(" install  "),
+                styled_key("Enter"),
+                plain(" select  "),
                 styled_key("Esc"),
-                plain(" back to sections"),
+                plain(" cancel"),
             ],
+            AppFocus::Section => {
+                let mgr = app.active_package_manager();
+                let i_hint = if mgr == "winget" { " search  " } else { " add package  " };
+                vec![
+                    styled_key("↑↓/jk"),
+                    plain(" navigate  "),
+                    styled_key("Space/Enter"),
+                    plain(" open section  "),
+                    styled_key("i"),
+                    plain(i_hint),
+                    styled_key("p"),
+                    plain(&format!(" select package manager [{}]  ", mgr)),
+                    styled_key("d"),
+                    plain(" install selected  "),
+                    styled_key("Tab"),
+                    plain(" switch tab"),
+                ]
+            }
+            AppFocus::Apps => {
+                let i_hint = if app.active_package_manager() == "winget" {
+                    " search  "
+                } else {
+                    " add package  "
+                };
+                let mgr = app.active_package_manager();
+                vec![
+                    styled_key("↑↓/jk"),
+                    plain(" navigate  "),
+                    styled_key("Space"),
+                    plain(" toggle select  "),
+                    styled_key("i"),
+                    plain(i_hint),
+                    styled_key("p"),
+                    plain(&format!(" select package manager [{}]  ", mgr)),
+                    styled_key("d"),
+                    plain(" install  "),
+                    styled_key("Esc"),
+                    plain(" back to sections"),
+                ]
+            }
             AppFocus::CustomInput => vec![
                 styled_key("type"),
                 plain(" enter package name  "),
@@ -70,7 +94,6 @@ pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
                 styled_key("Esc"),
                 plain(" cancel"),
             ],
-            // Winget search panel hints
             AppFocus::Search => vec![
                 styled_key("type"),
                 plain(" edit query  "),

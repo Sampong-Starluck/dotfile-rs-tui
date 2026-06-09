@@ -22,6 +22,7 @@ mod models;
 mod logging;
 mod service;
 mod enumerate;
+mod utils;
 
 fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
@@ -84,9 +85,6 @@ fn run(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> color_eyre
                         app.active_tab = app.active_tab.prev();
                         terminal.clear()?;
                         terminal.draw(|frame| ui::render(&mut app, frame))?; // immediate redraw
-                    }
-                    KeyCode::Char('p') => {
-                        app.cycle_package_manager();
                     }
                     KeyCode::Char('q') => app.running = false,
                     // Delegate to active tab

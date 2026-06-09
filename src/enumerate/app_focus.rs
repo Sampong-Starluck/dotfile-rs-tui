@@ -7,4 +7,5 @@ pub enum AppFocus {
     Search,
     Installing,
     SudoConfirm,
+    PmPicker,   // ← add
 }

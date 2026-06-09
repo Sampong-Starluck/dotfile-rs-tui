@@ -5,9 +5,9 @@ use std::{
 use std::sync::mpsc::Sender;
 use crate::{
     enumerate::AppFocus,
-    models::{Apps, OperatingSystem, PackageManager, TabModel}
+    models::{Apps, OperatingSystem, PackageManager, TabModel},
+    service::SearchResult
 };
-use crate::ui::features::SearchResult;
 
 pub struct App {
     pub active_tab:       TabModel,
@@ -27,12 +27,13 @@ pub struct App {
     pub app_install_log:      Vec<String>,
     pub app_installing:       bool,
     pub install_rx:           Option<Receiver<String>>,
-    pub pkg_mgr:              String,
     pub app_sudo_pending:     bool,
     pub app_sudo_command:     Vec<String>,
     pub app_sudo_password:    String,
     pub install_tx:           Option<Sender<String>>,
     pub install_input:        String,
+    pub pm_picker_selected: usize,  // ← add
+    pub search_origin: AppFocus,  // ← add
 
     // winget search
     pub search_query:    String,
@@ -53,6 +54,7 @@ impl App {
             selected_pm:          0,
             command_scroll:       0,
             running:              true,
+            // App
             apps:                 None,
             app_selected_section: 0,
             app_selected_app:     0,
@@ -62,12 +64,13 @@ impl App {
             app_install_log:      Vec::new(),
             app_installing:       false,
             install_rx:           None,
-            pkg_mgr:              String::new(),
             app_sudo_pending:     false,
             app_sudo_command:     Vec::new(),
             app_sudo_password:    String::new(),
             install_tx:           None,
             install_input:        String::new(),
+            pm_picker_selected:   0,
+            search_origin:        AppFocus::Section,  // ← add
             // winget search
             search_query:         String::new(),
             search_results:       Vec::new(),
@@ -82,52 +85,6 @@ impl App {
             .get(self.selected_pm)
             .map(|pm| pm.binary())
             .unwrap_or("unknown")
-    }
-
-    pub fn set_package_manager(&mut self, mgr: String) {
-        if let Some(idx) = self.package_managers
-            .iter()
-            .position(|pm| pm.binary() == mgr.as_str())
-        {
-            self.selected_pm = idx;
-        }
-        self.apps                 = None;
-        self.app_selected_section = 0;
-        self.app_selected_app     = 0;
-    }
-
-    pub fn cycle_package_manager(&mut self) {
-        let candidates: Vec<&str> = if cfg!(target_os = "windows") {
-            vec!["winget", "scoop", "choco"]
-        } else if cfg!(target_os = "macos") {
-            vec!["brew"]
-        } else {
-            vec!["pacman", "apt", "dnf", "xbps-install"]
-        };
-
-        let current = candidates
-            .iter()
-            .position(|m| *m == self.pkg_mgr.as_str())
-            .unwrap_or(0);
-
-        let next = candidates
-            .iter()
-            .cycle()
-            .skip(current + 1)
-            .take(candidates.len())
-            .find(|mgr| {
-                std::process::Command::new(*mgr)
-                    .arg("--version")
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status()
-                    .is_ok()
-            })
-            .map(|m| m.to_string());
-
-        if let Some(mgr) = next {
-            self.set_package_manager(mgr);
-        }
     }
 
     pub fn scroll_down(&mut self) {

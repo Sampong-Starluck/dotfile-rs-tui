@@ -5,6 +5,8 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq)]
 pub enum PackageManager {
     Winget,
+    Scoop,   // ← add
+    Choco,   // ← add
     Apt,
     Dnf,
     Pacman,
@@ -72,6 +74,22 @@ impl PackageManager {
                 PmCommand { name: "show",     command: "winget show <pkg>",     description: "Show package details"       },
                 PmCommand { name: "list",     command: "winget list",           description: "List installed packages"    },
             ],
+            Self::Scoop => &[
+                PmCommand { name: "install", command: "scoop install <pkg>",   description: "Install a package"         },
+                PmCommand { name: "remove",  command: "scoop uninstall <pkg>", description: "Remove a package"          },
+                PmCommand { name: "update",  command: "scoop update *",        description: "Upgrade all packages"      },
+                PmCommand { name: "search",  command: "scoop search <pkg>",    description: "Search available packages" },
+                PmCommand { name: "info",    command: "scoop info <pkg>",      description: "Show package details"      },
+                PmCommand { name: "list",    command: "scoop list",            description: "List installed packages"   },
+            ],
+            Self::Choco => &[
+                PmCommand { name: "install", command: "choco install <pkg> -y",   description: "Install a package"         },
+                PmCommand { name: "remove",  command: "choco uninstall <pkg> -y", description: "Remove a package"          },
+                PmCommand { name: "update",  command: "choco upgrade all -y",     description: "Upgrade all packages"      },
+                PmCommand { name: "search",  command: "choco search <pkg>",       description: "Search available packages" },
+                PmCommand { name: "info",    command: "choco info <pkg>",         description: "Show package details"      },
+                PmCommand { name: "list",    command: "choco list --local-only",  description: "List installed packages"   },
+            ],
             Self::Brew => &[
                 PmCommand { name: "install",  command: "brew install <pkg>",    description: "Install a package"          },
                 PmCommand { name: "remove",   command: "brew uninstall <pkg>",  description: "Remove a package"           },
@@ -87,6 +105,8 @@ impl PackageManager {
     pub fn binary(&self) -> &'static str {
         match self {
             Self::Winget => "winget",
+            Self::Scoop  => "scoop",   // ← add
+            Self::Choco  => "choco",   // ← add
             Self::Apt    => "apt",
             Self::Dnf    => "dnf",
             Self::Pacman => "pacman",
@@ -100,6 +120,8 @@ impl PackageManager {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Winget => "winget",
+            Self::Scoop  => "scoop",   // ← add
+            Self::Choco  => "choco",   // ← add
             Self::Apt    => "apt",
             Self::Dnf    => "dnf",
             Self::Pacman => "pacman",
@@ -109,18 +131,18 @@ impl PackageManager {
         }
     }
 
-    /// All known package managers to probe
-    /*pub fn all() -> &'static [PackageManager] {
-        &[
-            Self::Winget,
-            Self::Apt,
-            Self::Dnf,
-            Self::Pacman,
-            Self::Yay,
-            Self::Xbps,
-            Self::Brew,   // ← add this
-        ]
-    }*/
+    // All known package managers to probe
+    // pub fn all() -> &'static [PackageManager] {
+    //     &[
+    //         Self::Winget,
+    //         Self::Apt,
+    //         Self::Dnf,
+    //         Self::Pacman,
+    //         Self::Yay,
+    //         Self::Xbps,
+    //         Self::Brew,   // ← add this
+    //     ]
+    // }
 
     /// Check if this package manager is available on the current system
     pub fn is_available(&self) -> bool {
@@ -140,7 +162,7 @@ impl PackageManager {
 
     fn candidates_for(os: &OperatingSystem) -> Vec<PackageManager> {
         match os {
-            OperatingSystem::Windows => vec![Self::Winget],
+            OperatingSystem::Windows => vec![Self::Winget, Self::Scoop, Self::Choco],
             OperatingSystem::MacOs   => vec![Self::Brew],
             OperatingSystem::Linux { distro } => match distro {
                 Some(LinuxDistro::Arch)   => vec![Self::Pacman, Self::Yay],

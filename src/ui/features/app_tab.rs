@@ -1,21 +1,32 @@
-use crate::app::App;
-use crate::enumerate::AppFocus;
-use crate::models::Apps;
-use crate::service::{
-    filter_apps_by_platform, get_install_command, install_command, is_root, read_apps_json,
-    requires_interactive, requires_sudo,
+use crate::{
+    app::App,
+    enumerate::AppFocus,
+    models::Apps,
+    service::{
+        filter_apps_by_platform, get_install_command, install_command,
+        is_root, read_apps_json, requires_interactive, requires_sudo,
+        search_command, decode_search_output, parse_search_output,   // ← new
+        search_hint,                                                  // ← new
+        SearchResult
+    }
 };
 use crossterm::event::{KeyCode, KeyEvent};
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
-use std::collections::HashSet;
-use std::io::{BufRead, BufReader};
-use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex, mpsc};
-use std::thread;
+use ratatui::{
+    Frame,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+};
+use std::{
+    collections::HashSet,
+    io::{BufRead, BufReader},
+    process::{Command, Stdio},
+    sync::{Arc, Mutex, mpsc},
+    thread,
+};
+use crate::models::PackageManager;
+use crate::utils::{decode_winget_output, is_noise_line, sanitize_line, strip_ansi};
 
 pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
     if app.apps.is_none() {
@@ -54,14 +65,14 @@ pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
     }
 
     // Drain search result channel (winget only)
-    if let Some(rx) = &app.search_rx {
-        if let Ok(results) = rx.try_recv() {
-            tracing::info!("[app_render] received {} search results", results.len());
-            app.search_results = results;
-            app.search_loading = false;
-            app.search_selected = 0;
-            app.search_rx = None;
-        }
+    if let Some(rx) = &app.search_rx
+        && let Ok(results) = rx.try_recv()
+    {
+        tracing::info!("[app_render] received {} search results", results.len());
+        app.search_results = results;
+        app.search_loading = false;
+        app.search_selected = 0;
+        app.search_rx = None;
     }
 
     render_sidebar(frame, sidebar, apps, app);
@@ -75,13 +86,69 @@ pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
 
     render_custom_input(frame, body_chunks[1], app);
 
+    // in app_render(), after render_app_list / render_search_panel:
+    if app.app_focus == AppFocus::PmPicker {
+        render_pm_picker(frame, app);
+    } else if app.app_sudo_pending {
+        render_sudo_confirmation(frame, app);
+    } else if app.app_installing {
+        render_install_modal(frame, app);
+    }
+
     if app.app_sudo_pending {
         tracing::debug!("[app_render] rendering sudo confirmation modal");
         render_sudo_confirmation(frame, app);
     } else if app.app_installing {
-        tracing::debug!("[app_render] rendering install modal (log_lines={})", app.app_install_log.len());
+        tracing::debug!(
+            "[app_render] rendering install modal (log_lines={})",
+            app.app_install_log.len()
+        );
         render_install_modal(frame, app);
     }
+}
+
+fn render_pm_picker(frame: &mut Frame, app: &App) {
+    let area = centered_rect(40, 50, frame.area());
+    frame.render_widget(Clear, area);
+
+    let items: Vec<ListItem> = app
+        .package_managers
+        .iter()
+        .enumerate()
+        .map(|(i, pm)| {
+            let is_cursor   = i == app.pm_picker_selected;
+            let is_active   = i == app.selected_pm;
+
+            let label = if is_active {
+                format!("▶ {:8}  {} (active)", pm.binary(), pm_description(pm))
+            } else {
+                format!("  {:8}  {}", pm.binary(), pm_description(pm))
+            };
+
+            let style = match (is_cursor, is_active) {
+                (true, true)  => Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD),
+                (true, false) => Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                (_, true)     => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                _             => Style::default().fg(Color::White),
+            };
+
+            ListItem::new(Line::from(Span::styled(label, style)))
+        })
+        .collect();
+
+    let mut list_state = ListState::default();
+    list_state.select(Some(app.pm_picker_selected));
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Select Package Manager ")
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
+        .highlight_symbol("");
+
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 fn render_sidebar(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) {
@@ -155,12 +222,20 @@ fn render_app_list(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) {
             let checkbox = if is_selected { "[✓]" } else { "[ ]" };
             let arrow = if is_cursor { "▶ " } else { "  " };
 
+            // render_app_list — replace the style match block
             let style = match (is_cursor, is_selected) {
-                (true, _) => Style::default()
-                    .fg(Color::Cyan)
+                (true, true) => Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Green) // ← green bg = selected + cursor
                     .add_modifier(Modifier::BOLD),
-                (_, true) => Style::default().fg(Color::Green),
-                _ => Style::default().fg(Color::White),
+                (true, false) => Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan) // ← cyan bg = cursor only
+                    .add_modifier(Modifier::BOLD),
+                (false, true) => Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD), // ← green text = selected, no cursor
+                (false, false) => Style::default().fg(Color::DarkGray),
             };
 
             ListItem::new(Line::from(Span::styled(
@@ -184,14 +259,19 @@ fn render_app_list(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) {
         Style::default().fg(Color::DarkGray)
     };
 
-    let list = List::new(items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title)
-            .border_style(border_style),
-    );
+    let mut list_state = ListState::default();
+    list_state.select(Some(app.app_selected_app));
 
-    frame.render_widget(list, area);
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(border_style),
+        )
+        .highlight_symbol(""); // we draw our own arrow, so disable ratatui's
+
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 // ─── Search panel (winget only) ──────────────────────────────────────────────
@@ -205,11 +285,7 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
     } else if app.search_results.is_empty() && !app.search_query.is_empty() {
         format!(" Search [{}] — no results ", mgr)
     } else {
-        format!(
-            " Search [{}] — {} result(s) ",
-            mgr,
-            app.search_results.len()
-        )
+        format!(" Search [{}] — {} result(s) ", mgr, app.search_results.len())
     };
 
     if app.search_loading {
@@ -220,12 +296,12 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default().fg(Color::Yellow),
             )),
         ])
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(title)
-                    .border_style(Style::default().fg(Color::Yellow)),
-            );
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(Color::Yellow)),
+        );
         frame.render_widget(loading, area);
         return;
     }
@@ -243,12 +319,12 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default().fg(Color::DarkGray),
             )),
         ])
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(title)
-                    .border_style(Style::default().fg(Color::DarkGray)),
-            );
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(Color::DarkGray)),
+        );
         frame.render_widget(empty, area);
         return;
     }
@@ -256,8 +332,8 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
     // Compute visible column widths — name gets ~50%, id gets ~35%, version ~15%
     let inner_w = area.width.saturating_sub(2); // subtract borders
     let name_w = (inner_w as f32 * 0.40) as usize;
-    let id_w   = (inner_w as f32 * 0.40) as usize;
-    let ver_w  = inner_w.saturating_sub((name_w + id_w) as u16) as usize;
+    let id_w = (inner_w as f32 * 0.40) as usize;
+    let ver_w = inner_w.saturating_sub((name_w + id_w) as u16) as usize;
 
     let items: Vec<ListItem> = app
         .search_results
@@ -268,44 +344,88 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
             let is_picked = app.app_selected_ids.contains(&result.id);
 
             let checkbox = if is_picked { "[✓]" } else { "[ ]" };
-            let arrow    = if is_cursor { "▶ " } else { "  " };
+            let arrow = if is_cursor { "▶ " } else { "  " };
 
             // Truncate each column to its allotted width
             let name = truncate(&result.name, name_w);
-            let id   = truncate(&result.id,   id_w);
-            let ver  = truncate(&result.version, ver_w);
+            let id = truncate(&result.id, id_w);
+            let ver = truncate(&result.version, ver_w);
 
+            // let style = match (is_cursor, is_picked) {
+            //     (true, _) => Style::default()
+            //         .fg(Color::Cyan)
+            //         .add_modifier(Modifier::BOLD),
+            //     (_, true) => Style::default().fg(Color::Green),
+            //     _ => Style::default().fg(Color::White),
+            // };
             let style = match (is_cursor, is_picked) {
-                (true, _) => Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-                (_, true) => Style::default().fg(Color::Green),
-                _         => Style::default().fg(Color::White),
+                (true, true) => Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Green)
+                    .add_modifier(Modifier::BOLD), // ← green bg = selected + cursor
+                (true, false) => Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD), // ← cyan bg = cursor only
+                (false, true) => Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD), // ← green text = selected, no cursor
+                (false, false) => Style::default().fg(Color::DarkGray),
             };
 
             ListItem::new(Line::from(vec![
                 Span::styled(format!("{}{} ", arrow, checkbox), style),
-                Span::styled(format!("{:<width$}  ", name, width = name_w), style),
                 Span::styled(
                     format!("{:<width$}  ", id, width = id_w),
-                    Style::default().fg(if is_cursor { Color::Cyan } else { Color::Yellow }),
+                    Style::default()
+                        .fg(if is_cursor {
+                            Color::Black
+                        } else {
+                            Color::Yellow
+                        })
+                        .bg(if is_cursor && is_picked {
+                            Color::Green
+                        } else if is_cursor {
+                            Color::Cyan
+                        } else {
+                            Color::Reset
+                        }),
                 ),
                 Span::styled(
-                    ver,
-                    Style::default().fg(Color::DarkGray),
+                    format!("{:<width$}  ", id, width = id_w),
+                    Style::default().fg(if is_cursor {
+                        Color::Cyan
+                    } else {
+                        Color::Yellow
+                    }),
                 ),
+                Span::styled(ver, Style::default().fg(Color::DarkGray)),
             ]))
         })
         .collect();
 
-    let list = List::new(items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title)
-            .border_style(Style::default().fg(Color::Cyan)),
-    );
+    // let list = List::new(items).block(
+    //     Block::default()
+    //         .borders(Borders::ALL)
+    //         .title(title)
+    //         .border_style(Style::default().fg(Color::Cyan)),
+    // );
+    //
+    // frame.render_widget(list, area);
 
-    frame.render_widget(list, area);
+    let mut list_state = ListState::default();
+    list_state.select(Some(app.search_selected));
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
+        .highlight_symbol("");
+
+    frame.render_stateful_widget(list, area, &mut list_state);
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -315,13 +435,15 @@ fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
-        format!("{}…", &s.chars().take(max.saturating_sub(1)).collect::<String>())
+        format!(
+            "{}…",
+            &s.chars().take(max.saturating_sub(1)).collect::<String>()
+        )
     }
 }
 
 fn render_custom_input(frame: &mut Frame, area: Rect, app: &App) {
-    let focused = app.app_focus == AppFocus::CustomInput
-        || app.app_focus == AppFocus::Search;
+    let focused = app.app_focus == AppFocus::CustomInput || app.app_focus == AppFocus::Search;
 
     let border_style = if focused {
         Style::default().fg(Color::Magenta)
@@ -330,7 +452,7 @@ fn render_custom_input(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let mgr = app.active_package_manager();
-    let is_winget = mgr == "winget";
+    // let is_winget = mgr == "winget";
 
     let (title, content) = if app.app_focus == AppFocus::Search {
         // Search mode (winget): show the search query buffer
@@ -338,10 +460,7 @@ fn render_custom_input(frame: &mut Frame, area: Rect, app: &App) {
         let display = if buf.is_empty() {
             Span::styled("▌", Style::default().fg(Color::Magenta))
         } else {
-            Span::styled(
-                format!("{}▌", buf),
-                Style::default().fg(Color::White),
-            )
+            Span::styled(format!("{}▌", buf), Style::default().fg(Color::White))
         };
         (" Search (Enter to run, Esc to cancel) [i]", display)
     } else if focused {
@@ -350,19 +469,12 @@ fn render_custom_input(frame: &mut Frame, area: Rect, app: &App) {
         let display = if buf.is_empty() {
             Span::styled("▌", Style::default().fg(Color::Magenta))
         } else {
-            Span::styled(
-                format!("{}▌", buf),
-                Style::default().fg(Color::White),
-            )
+            Span::styled(format!("{}▌", buf), Style::default().fg(Color::White))
         };
         (" Custom Package [i]", display)
     } else {
         // Idle hint — differs by manager
-        let hint = if is_winget {
-            "Press [i] to search winget"
-        } else {
-            "Press [i] to enter package name"
-        };
+        let hint = search_hint(app.active_package_manager());
         let display = Span::styled(hint.to_string(), Style::default().fg(Color::DarkGray));
         (" Search / Custom [i]", display)
     };
@@ -383,10 +495,7 @@ fn render_install_modal(frame: &mut Frame, app: &App) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Fill(1),
-            Constraint::Length(3),
-        ])
+        .constraints([Constraint::Fill(1), Constraint::Length(3)])
         .split(area);
 
     let log_text: Vec<Line> = app
@@ -466,18 +575,53 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 // ─── Key handler ─────────────────────────────────────────────────────────────
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
-    tracing::debug!(
-        "[handle_key] focus={:?} key={:?}",
-        app.app_focus,
-        key.code
-    );
+    tracing::debug!("[handle_key] focus={:?} key={:?}", app.app_focus, key.code);
     match app.app_focus {
-        AppFocus::Section     => handle_section_keys(app, key),
-        AppFocus::Apps        => handle_apps_keys(app, key),
+        AppFocus::Section => handle_section_keys(app, key),
+        AppFocus::Apps => handle_apps_keys(app, key),
         AppFocus::CustomInput => handle_custom_input_keys(app, key),
-        AppFocus::Search      => handle_search_keys(app, key),
-        AppFocus::Installing  => handle_installing_keys(app, key),
+        AppFocus::Search => handle_search_keys(app, key),
+        AppFocus::Installing => handle_installing_keys(app, key),
         AppFocus::SudoConfirm => handle_sudo_confirm_keys(app, key),
+        AppFocus::PmPicker => handle_pm_picker_keys(app, key),
+    }
+}
+
+fn handle_pm_picker_keys(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            if app.pm_picker_selected > 0 {
+                app.pm_picker_selected -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if app.pm_picker_selected < app.package_managers.len().saturating_sub(1) {
+                app.pm_picker_selected += 1;
+            }
+        }
+        KeyCode::Enter => {
+            if app.pm_picker_selected != app.selected_pm {
+                app.selected_pm           = app.pm_picker_selected;
+                app.apps                  = None;
+                app.app_selected_section  = 0;
+                app.app_selected_app      = 0;
+                app.app_selected_ids.clear();
+                app.search_query.clear();
+                app.search_results.clear();
+                app.search_loading        = false;
+                app.search_rx             = None;
+                tracing::info!(
+                    "[pm_picker] switched to manager={}",
+                    app.active_package_manager()
+                );
+            }
+            app.app_focus = AppFocus::Section;
+        }
+        KeyCode::Esc => {
+            // discard — no change
+            app.app_focus = AppFocus::Section;
+        }
+        _ => {}
     }
 }
 
@@ -547,13 +691,17 @@ fn handle_search_keys(app: &mut App, key: KeyEvent) {
                     app.app_selected_ids.remove(&result.id);
                     tracing::info!(
                         "[search] deselected id={} name={} — total_selected={}",
-                        result.id, result.name, app.app_selected_ids.len()
+                        result.id,
+                        result.name,
+                        app.app_selected_ids.len()
                     );
                 } else {
                     app.app_selected_ids.insert(result.id.clone());
                     tracing::info!(
                         "[search] selected id={} name={} — total_selected={}",
-                        result.id, result.name, app.app_selected_ids.len()
+                        result.id,
+                        result.name,
+                        app.app_selected_ids.len()
                     );
                 }
             }
@@ -563,7 +711,7 @@ fn handle_search_keys(app: &mut App, key: KeyEvent) {
         KeyCode::Enter => {
             if !app.search_query.is_empty() && !app.search_loading {
                 tracing::info!("[search] re-running search for {:?}", app.search_query);
-                run_winget_search(app);
+                run_search(app);
             }
         }
 
@@ -579,8 +727,11 @@ fn handle_search_keys(app: &mut App, key: KeyEvent) {
 
         // Close search panel, return to apps list
         KeyCode::Esc => {
-            tracing::info!("[search] closed — returning to Apps focus");
-            app.app_focus = AppFocus::Apps;
+            tracing::info!(
+                "[search] closed — returning to {:?}",
+                app.search_origin
+            );
+            app.app_focus = app.search_origin;  // ← was hardcoded AppFocus::Apps
             app.search_results.clear();
             app.search_query.clear();
             app.search_loading = false;
@@ -593,9 +744,10 @@ fn handle_search_keys(app: &mut App, key: KeyEvent) {
 
 // ─── Winget search runner ─────────────────────────────────────────────────────
 
-fn run_winget_search(app: &mut App) {
+fn run_search(app: &mut App) {
     let query = app.search_query.clone();
-    tracing::info!("[run_winget_search] launching: winget search {}", query);
+    let mgr   = app.active_package_manager().to_string();
+    tracing::info!("[run_search] launching: {} search {}", mgr, query);
 
     app.search_loading = true;
     app.search_results.clear();
@@ -604,225 +756,20 @@ fn run_winget_search(app: &mut App) {
     app.search_rx = Some(rx);
 
     thread::spawn(move || {
-        let output = Command::new("winget")
-            // Pass query as a plain positional arg — no --query flag, no quoting.
-            // --disable-interactivity is intentionally omitted: on many Windows
-            // setups it suppresses all output, causing empty results.
-            .args(["search", &query])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output();
-
-        match output {
+        let (cmd, args) = search_command(&mgr, &query);
+        match Command::new(&cmd).args(&args).stdout(Stdio::piped()).stderr(Stdio::null()).output() {
             Ok(out) => {
-                // Winget on Windows outputs UTF-16 LE in some environments.
-                // Try UTF-8 first (works in most modern setups), then fall back
-                // to a lossy decode that strips unrecognised bytes rather than
-                // returning an empty string.
-                let text = decode_winget_output(&out.stdout);
-                tracing::debug!("[winget_search:thread] raw output ({} bytes):\n{}", out.stdout.len(), &text);
-                let results = parse_winget_search(&text);
-                tracing::info!(
-                    "[winget_search:thread] parsed {} results for {:?}",
-                    results.len(),
-                    query
-                );
+                let text    = decode_search_output(&mgr, &out.stdout);
+                let results = parse_search_output(&mgr, &text);
+                tracing::info!("[run_search:thread] {} results for {:?} via {}", results.len(), query, mgr);
                 let _ = tx.send(results);
             }
             Err(e) => {
-                tracing::error!("[winget_search:thread] failed to run winget: {}", e);
+                tracing::error!("[run_search:thread] failed to run {}: {}", cmd, e);
                 let _ = tx.send(vec![]);
             }
         }
     });
-}
-
-/// Decode winget's stdout bytes to a String.
-///
-/// Winget can emit:
-///   - Plain UTF-8 (modern Windows Terminal / PowerShell 7)
-///   - UTF-16 LE with BOM (older CMD environments)
-///   - UTF-8 with a BOM (0xEF 0xBB 0xBF)
-///
-/// We detect the BOM and decode accordingly, falling back to lossy UTF-8.
-fn decode_winget_output(bytes: &[u8]) -> String {
-    // UTF-16 LE BOM: FF FE
-    if bytes.starts_with(&[0xFF, 0xFE]) {
-        let words: Vec<u16> = bytes[2..]
-            .chunks_exact(2)
-            .map(|b| u16::from_le_bytes([b[0], b[1]]))
-            .collect();
-        return String::from_utf16_lossy(&words);
-    }
-    // UTF-8 BOM: EF BB BF — strip it
-    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
-        return String::from_utf8_lossy(&bytes[3..]).into_owned();
-    }
-    // Plain UTF-8
-    String::from_utf8_lossy(bytes).into_owned()
-}
-
-/// Parse `winget search` tabular output into structured results.
-///
-/// Winget output looks like:
-/// ```
-/// Name             Id                      Version   Source
-/// ---------------------------------------------------------------
-/// PowerShell       Microsoft.PowerShell    7.4.1     winget
-/// ```
-/// We locate the header row to find column offsets, then slice each
-/// data row at those offsets.
-fn parse_winget_search(output: &str) -> Vec<SearchResult> {
-    let mut results = Vec::new();
-    let mut header_offsets: Option<(usize, usize, usize)> = None;
-
-    // Winget uses bare \r (carriage return) to overwrite its progress spinner
-    // in place, so the entire output arrives as one giant "line" when split on
-    // \n.  We must split on \r first, then also on \n, deduplicate blanks,
-    // and strip ANSI codes from each segment before column detection.
-    let segments: Vec<String> = output
-        .split(|c| c == '\r' || c == '\n')
-        .map(|s| strip_ansi(s))
-        .collect();
-
-    for line in &segments {
-        let line = line.as_str();
-
-        // Skip blank lines, pure-control lines, and winget progress bar lines.
-        // Progress lines contain block-drawing chars (█ ▒) or KB/MB markers.
-        if line.trim().is_empty() {
-            continue;
-        }
-        if line.contains('█') || line.contains('▒') || line.contains("KB /") || line.contains("MB /") {
-            continue;
-        }
-        // Skip the spinner frames winget emits before the table (-, \, |, /)
-        let trimmed = line.trim();
-        if trimmed == "-" || trimmed == "\\" || trimmed == "|" || trimmed == "/" {
-            continue;
-        }
-
-        // Detect header row
-        if header_offsets.is_none() {
-            let lower = line.to_lowercase();
-            if lower.contains("name") && lower.contains("id") && lower.contains("version") {
-                let id_pos  = find_col(&line, "Id").or_else(|| find_col(&line, "id"));
-                let ver_pos = find_col(&line, "Version").or_else(|| find_col(&line, "version"));
-                let src_pos = find_col(&line, "Source").or_else(|| find_col(&line, "source"));
-
-                if let (Some(id), Some(ver)) = (id_pos, ver_pos) {
-                    if id > 0 && ver > id {
-                        header_offsets = Some((id, ver, src_pos.unwrap_or(usize::MAX)));
-                        tracing::debug!(
-                            "[parse_winget] header: id_col={} ver_col={} src_col={:?} line={:?}",
-                            id, ver, src_pos, line
-                        );
-                    }
-                }
-            }
-            continue;
-        }
-
-        // Skip separator lines (all dashes/spaces)
-        if line.chars().all(|c| c == '-' || c == ' ') {
-            continue;
-        }
-
-        if let Some((id_start, ver_start, src_start)) = header_offsets {
-            let chars: Vec<char> = line.chars().collect();
-            let len = chars.len();
-
-            if len < id_start {
-                continue;
-            }
-
-            let name = chars[..id_start]
-                .iter().collect::<String>().trim().to_string();
-            let id = chars[id_start..ver_start.min(len)]
-                .iter().collect::<String>().trim().to_string();
-            let version = if len > ver_start {
-                chars[ver_start..src_start.min(len)]
-                    .iter().collect::<String>().trim().to_string()
-            } else {
-                String::new()
-            };
-
-            if !name.is_empty() && !id.is_empty() {
-                tracing::debug!("[parse_winget] row: name={:?} id={:?} ver={:?}", name, id, version);
-                results.push(SearchResult { name, id, version });
-            }
-        }
-    }
-
-    results
-}
-
-/// Remove ANSI escape sequences from a string.
-///
-/// Winget emits cursor/erase sequences (ESC [ ... m/K/J/A/h/l) as part of
-/// its progress spinner. These are invisible in a real terminal but appear
-/// as raw bytes when stdout is piped, inflating column offsets.
-fn strip_ansi(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' {
-            // ESC — consume the rest of the escape sequence
-            if chars.peek() == Some(&'[') {
-                chars.next(); // consume '['
-                // Consume until a letter (the final byte of the sequence)
-                for sc in chars.by_ref() {
-                    if sc.is_ascii_alphabetic() {
-                        break;
-                    }
-                }
-            } else {
-                // Two-char escape (ESC + single char) — skip next char
-                chars.next();
-            }
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
-
-/// Find the char-index of the first occurrence of `needle` in `haystack`.
-fn find_col(haystack: &str, needle: &str) -> Option<usize> {
-    let h: Vec<char> = haystack.chars().collect();
-    let n: Vec<char> = needle.chars().collect();
-    let n_len = n.len();
-    if n_len == 0 || h.len() < n_len { return None; }
-    for i in 0..=(h.len() - n_len) {
-        if h[i..i + n_len] == n[..] { return Some(i); }
-    }
-    None
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-fn sanitize_line(line: String) -> String {
-    line.trim_end_matches('\r').to_string()
-}
-
-/// Returns true for lines that should be hidden in the install log.
-///
-/// Winget uses bare \r to animate a progress spinner and download bar in
-/// place. When stdout is piped those \r sequences arrive inside a single
-/// BufReader "line". We split on \r here and filter out the noise segments
-/// so only meaningful status lines reach the UI.
-fn is_noise_line(s: &str) -> bool {
-    let t = s.trim();
-    if t.is_empty() { return true; }
-    // Spinner frames
-    if t == "-" || t == "\\" || t == "|" || t == "/" { return true; }
-    // Progress bar / download bar characters
-    if t.contains('█') || t.contains('▒') { return true; }
-    // KB/MB download progress markers
-    if t.contains("KB /") || t.contains("MB /") || t.contains("GB /") { return true; }
-    // Percentage-only lines (e.g. "  55%")
-    if t.ends_with('%') && t.trim_end_matches('%').trim().chars().all(|c| c.is_ascii_digit()) { return true; }
-    false
 }
 
 /// Read all stdout lines from a child process, split on both \n and \r,
@@ -882,12 +829,14 @@ fn execute_install_with_password(app: &mut App, password: String) {
     }
 
     app.app_install_log.clear();
-    app.app_install_log.push("Starting installation...".to_string());
-    app.app_install_log.push("Type y/n or Enter to respond to prompts.".to_string());
+    app.app_install_log
+        .push("Starting installation...".to_string());
+    app.app_install_log
+        .push("Type y/n or Enter to respond to prompts.".to_string());
     app.app_installing = true;
 
     let (out_tx, out_rx) = mpsc::channel::<String>();
-    let (in_tx, in_rx)   = mpsc::channel::<String>();
+    let (in_tx, in_rx) = mpsc::channel::<String>();
 
     app.install_rx = Some(out_rx);
     app.install_tx = Some(in_tx);
@@ -917,39 +866,52 @@ fn execute_install_with_password(app: &mut App, password: String) {
                 Ok(mut child) => {
                     tracing::debug!(
                         "[install_with_password:thread] spawned {} pid={:?}",
-                        binary, child.id()
+                        binary,
+                        child.id()
                     );
                     if let Some(mut stdin) = child.stdin.take() {
                         use std::io::Write;
                         if let Some(ref pwd) = password_clone {
-                            tracing::debug!("[install_with_password:thread] writing password to stdin");
+                            tracing::debug!(
+                                "[install_with_password:thread] writing password to stdin"
+                            );
                             let _ = writeln!(stdin, "{}", pwd);
                         }
                         let in_rx_clone = Arc::clone(&in_rx);
                         thread::spawn(move || {
-                            tracing::debug!("[install_with_password:stdin_relay] waiting for user input");
+                            tracing::debug!(
+                                "[install_with_password:stdin_relay] waiting for user input"
+                            );
                             while let Ok(input) = in_rx_clone.lock().unwrap().recv() {
-                                tracing::debug!("[install_with_password:stdin_relay] forwarding: {:?}", input);
+                                tracing::debug!(
+                                    "[install_with_password:stdin_relay] forwarding: {:?}",
+                                    input
+                                );
                                 let _ = writeln!(stdin, "{}", input);
                             }
-                            tracing::debug!("[install_with_password:stdin_relay] channel closed — exiting");
+                            tracing::debug!(
+                                "[install_with_password:stdin_relay] channel closed — exiting"
+                            );
                         });
                     }
 
-                    if let Some(stdout) = child.stdout.take() {
-                        if !drain_stdout_to_log(stdout, &out_tx, "install_with_password") {
-                            return;
-                        }
+                    if let Some(stdout) = child.stdout.take()
+                        && !drain_stdout_to_log(stdout, &out_tx, "install_with_password") {
+                        return;
                     }
 
                     if let Some(stderr) = child.stderr.take() {
                         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                             let line = sanitize_line(line);
-                            if is_noise_line(&line) { continue; }
+                            if is_noise_line(&line) {
+                                continue;
+                            }
                             if !line.contains("[sudo]") && !line.contains("password for") {
                                 tracing::debug!("[install_with_password:stderr] {}", line);
                                 if out_tx.send(format!("[err] {}", line)).is_err() {
-                                    tracing::warn!("[install_with_password:stderr] channel closed — stopping");
+                                    tracing::warn!(
+                                        "[install_with_password:stderr] channel closed — stopping"
+                                    );
                                     return;
                                 }
                             }
@@ -962,17 +924,29 @@ fn execute_install_with_password(app: &mut App, password: String) {
                             let _ = out_tx.send(format!("✓ Done: {}", binary));
                         }
                         Ok(s) => {
-                            tracing::warn!("[install_with_password:thread] {} exited {}", binary, s);
+                            tracing::warn!(
+                                "[install_with_password:thread] {} exited {}",
+                                binary,
+                                s
+                            );
                             let _ = out_tx.send(format!("✗ Failed (exit {})", s));
                         }
                         Err(e) => {
-                            tracing::error!("[install_with_password:thread] wait error for {}: {}", binary, e);
+                            tracing::error!(
+                                "[install_with_password:thread] wait error for {}: {}",
+                                binary,
+                                e
+                            );
                             let _ = out_tx.send(format!("✗ Error: {}", e));
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::error!("[install_with_password:thread] could not spawn {}: {}", binary, e);
+                    tracing::error!(
+                        "[install_with_password:thread] could not spawn {}: {}",
+                        binary,
+                        e
+                    );
                     let _ = out_tx.send(format!("✗ Could not run {}: {}", binary, e));
                 }
             }
@@ -1003,15 +977,17 @@ fn execute_install_interactive(app: &mut App, password: Option<String>) {
     }
 
     app.app_install_log.clear();
-    app.app_install_log.push("Starting installation...".to_string());
+    app.app_install_log
+        .push("Starting installation...".to_string());
     if requires_interactive(app.active_package_manager()) {
-        app.app_install_log.push("Type y/n and press Enter to respond to prompts.".to_string());
+        app.app_install_log
+            .push("Type y/n and press Enter to respond to prompts.".to_string());
     }
     app.app_installing = true;
     app.app_focus = AppFocus::Installing;
 
     let (out_tx, out_rx) = mpsc::channel::<String>();
-    let (in_tx, in_rx)   = mpsc::channel::<String>();
+    let (in_tx, in_rx) = mpsc::channel::<String>();
 
     app.install_rx = Some(out_rx);
     app.install_tx = Some(in_tx);
@@ -1041,39 +1017,52 @@ fn execute_install_interactive(app: &mut App, password: Option<String>) {
                 Ok(mut child) => {
                     tracing::debug!(
                         "[install_interactive:thread] spawned {} pid={:?}",
-                        binary, child.id()
+                        binary,
+                        child.id()
                     );
                     if let Some(mut stdin) = child.stdin.take() {
                         use std::io::Write;
                         if let Some(ref pwd) = password_clone {
-                            tracing::debug!("[install_interactive:thread] writing password to stdin");
+                            tracing::debug!(
+                                "[install_interactive:thread] writing password to stdin"
+                            );
                             let _ = writeln!(stdin, "{}", pwd);
                         }
                         let in_rx_clone = Arc::clone(&in_rx);
                         thread::spawn(move || {
-                            tracing::debug!("[install_interactive:stdin_relay] waiting for user input");
+                            tracing::debug!(
+                                "[install_interactive:stdin_relay] waiting for user input"
+                            );
                             while let Ok(input) = in_rx_clone.lock().unwrap().recv() {
-                                tracing::debug!("[install_interactive:stdin_relay] forwarding: {:?}", input);
+                                tracing::debug!(
+                                    "[install_interactive:stdin_relay] forwarding: {:?}",
+                                    input
+                                );
                                 let _ = writeln!(stdin, "{}", input);
                             }
-                            tracing::debug!("[install_interactive:stdin_relay] channel closed — exiting");
+                            tracing::debug!(
+                                "[install_interactive:stdin_relay] channel closed — exiting"
+                            );
                         });
                     }
 
-                    if let Some(stdout) = child.stdout.take() {
-                        if !drain_stdout_to_log(stdout, &out_tx, "install_interactive") {
+                    if let Some(stdout) = child.stdout.take()
+                        && !drain_stdout_to_log(stdout, &out_tx, "install_interactive") {
                             return;
-                        }
                     }
 
                     if let Some(stderr) = child.stderr.take() {
                         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                             let line = sanitize_line(line);
-                            if is_noise_line(&line) { continue; }
+                            if is_noise_line(&line) {
+                                continue;
+                            }
                             if !line.contains("[sudo]") && !line.contains("password for") {
                                 tracing::debug!("[install_interactive:stderr] {}", line);
                                 if out_tx.send(format!("[err] {}", line)).is_err() {
-                                    tracing::warn!("[install_interactive:stderr] channel closed — stopping");
+                                    tracing::warn!(
+                                        "[install_interactive:stderr] channel closed — stopping"
+                                    );
                                     return;
                                 }
                             }
@@ -1090,13 +1079,21 @@ fn execute_install_interactive(app: &mut App, password: Option<String>) {
                             let _ = out_tx.send(format!("✗ Failed (exit {})", s));
                         }
                         Err(e) => {
-                            tracing::error!("[install_interactive:thread] wait error for {}: {}", binary, e);
+                            tracing::error!(
+                                "[install_interactive:thread] wait error for {}: {}",
+                                binary,
+                                e
+                            );
                             let _ = out_tx.send(format!("✗ Error: {}", e));
                         }
                     }
                 }
                 Err(e) => {
-                    tracing::error!("[install_interactive:thread] could not spawn {}: {}", binary, e);
+                    tracing::error!(
+                        "[install_interactive:thread] could not spawn {}: {}",
+                        binary,
+                        e
+                    );
                     let _ = out_tx.send(format!("✗ Could not run {}: {}", binary, e));
                 }
             }
@@ -1114,7 +1111,8 @@ fn handle_section_keys(app: &mut App, key: KeyEvent) {
                 app.app_selected_app = 0;
                 tracing::debug!(
                     "[section] navigate up — section={} app={}",
-                    app.app_selected_section, app.app_selected_app
+                    app.app_selected_section,
+                    app.app_selected_app
                 );
             } else {
                 tracing::debug!("[section] navigate up — already at top");
@@ -1128,14 +1126,18 @@ fn handle_section_keys(app: &mut App, key: KeyEvent) {
                 app.app_selected_app = 0;
                 tracing::debug!(
                     "[section] navigate down — section={} app={}",
-                    app.app_selected_section, app.app_selected_app
+                    app.app_selected_section,
+                    app.app_selected_app
                 );
             } else {
                 tracing::debug!("[section] navigate down — already at bottom");
             }
         }
         KeyCode::Char(' ') | KeyCode::Enter => {
-            tracing::info!("[section] enter apps list — section={}", app.app_selected_section);
+            tracing::info!(
+                "[section] enter apps list — section={}",
+                app.app_selected_section
+            );
             app.app_focus = AppFocus::Apps;
             app.app_selected_app = 0;
         }
@@ -1145,6 +1147,18 @@ fn handle_section_keys(app: &mut App, key: KeyEvent) {
                 app.app_selected_ids.len()
             );
             start_install(app);
+        }
+        KeyCode::Char('i') => {
+            app.search_origin = AppFocus::Section;
+            app.app_focus = AppFocus::Search;  // ← always Search, no mgr check
+            app.search_query.clear();
+            app.search_results.clear();
+            app.search_loading = false;
+            tracing::info!("[section] 'i' — opening search for mgr={}", app.active_package_manager());
+        }
+        KeyCode::Char('p') => {
+            app.pm_picker_selected = app.selected_pm;
+            app.app_focus = AppFocus::PmPicker;
         }
         _ => {}
     }
@@ -1157,7 +1171,8 @@ fn handle_apps_keys(app: &mut App, key: KeyEvent) {
                 app.app_selected_app -= 1;
                 tracing::debug!(
                     "[apps] navigate up — section={} app={}",
-                    app.app_selected_section, app.app_selected_app
+                    app.app_selected_section,
+                    app.app_selected_app
                 );
             } else {
                 tracing::debug!("[apps] navigate up — already at top");
@@ -1171,7 +1186,8 @@ fn handle_apps_keys(app: &mut App, key: KeyEvent) {
                 app.app_selected_app += 1;
                 tracing::debug!(
                     "[apps] navigate down — section={} app={}",
-                    app.app_selected_section, app.app_selected_app
+                    app.app_selected_section,
+                    app.app_selected_app
                 );
             } else {
                 tracing::debug!("[apps] navigate down — already at bottom");
@@ -1186,13 +1202,17 @@ fn handle_apps_keys(app: &mut App, key: KeyEvent) {
                     app.app_selected_ids.remove(&entry.id);
                     tracing::info!(
                         "[apps] deselected app id={} name={} — total_selected={}",
-                        entry.id, entry.name, app.app_selected_ids.len()
+                        entry.id,
+                        entry.name,
+                        app.app_selected_ids.len()
                     );
                 } else {
                     app.app_selected_ids.insert(entry.id.clone());
                     tracing::info!(
                         "[apps] selected app id={} name={} — total_selected={}",
-                        entry.id, entry.name, app.app_selected_ids.len()
+                        entry.id,
+                        entry.name,
+                        app.app_selected_ids.len()
                     );
                 }
             }
@@ -1202,19 +1222,12 @@ fn handle_apps_keys(app: &mut App, key: KeyEvent) {
             app.app_focus = AppFocus::Section;
         }
         KeyCode::Char('i') => {
-            let mgr = app.active_package_manager();
-            if mgr == "winget" {
-                // Windows: open search panel
-                tracing::info!("[apps] 'i' — opening winget search panel");
-                app.app_focus = AppFocus::Search;
-                app.search_query.clear();
-                app.search_results.clear();
-                app.search_loading = false;
-            } else {
-                // Linux: plain custom input
-                tracing::debug!("[apps] 'i' — switching to custom input mode");
-                app.app_focus = AppFocus::CustomInput;
-            }
+            app.search_origin = AppFocus::Apps;
+            app.app_focus = AppFocus::Search;  // ← always Search, no mgr check
+            app.search_query.clear();
+            app.search_results.clear();
+            app.search_loading = false;
+            tracing::info!("[apps] 'i' — opening search for mgr={}", app.active_package_manager());
         }
         KeyCode::Char('d') => {
             tracing::info!(
@@ -1224,6 +1237,10 @@ fn handle_apps_keys(app: &mut App, key: KeyEvent) {
             );
             start_install(app);
         }
+        KeyCode::Char('p') => {
+            app.pm_picker_selected = app.selected_pm;
+            app.app_focus = AppFocus::PmPicker;
+        }
         _ => {}
     }
 }
@@ -1232,35 +1249,51 @@ fn handle_custom_input_keys(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Backspace => {
             app.app_custom_input.pop();
-            tracing::debug!("[custom_input] backspace — buffer={:?}", app.app_custom_input);
+            tracing::debug!(
+                "[custom_input] backspace — buffer={:?}",
+                app.app_custom_input
+            );
         }
         KeyCode::Enter => {
             let id = app.app_custom_input.trim().to_string();
             if !id.is_empty() {
-                tracing::info!("[custom_input] Enter — adding custom id={:?} to selection", id);
+                tracing::info!(
+                    "[custom_input] Enter — adding custom id={:?} to selection",
+                    id
+                );
                 app.app_selected_ids.insert(id);
                 app.app_custom_input.clear();
             } else {
                 tracing::debug!("[custom_input] Enter with empty buffer — ignoring");
             }
-            app.app_focus = AppFocus::Apps;
+            app.app_focus = app.search_origin;
         }
         KeyCode::Esc => {
-            tracing::debug!("[custom_input] Esc — discarding buffer={:?}", app.app_custom_input);
+            tracing::debug!(
+                "[custom_input] Esc — returning to {:?}, discarding buffer={:?}",
+                app.search_origin, app.app_custom_input
+            );
             app.app_custom_input.clear();
-            app.app_focus = AppFocus::Apps;
+            app.app_focus = app.search_origin;  // ← was hardcoded AppFocus::Apps
         }
         KeyCode::Char(c) => {
             if c == ' ' {
                 let id = app.app_custom_input.trim().to_string();
                 if !id.is_empty() {
-                    tracing::info!("[custom_input] Space — adding custom id={:?} to selection", id);
+                    tracing::info!(
+                        "[custom_input] Space — adding custom id={:?} to selection",
+                        id
+                    );
                     app.app_selected_ids.insert(id);
                     app.app_custom_input.clear();
                 }
             } else {
                 app.app_custom_input.push(c);
-                tracing::debug!("[custom_input] typed {:?} — buffer={:?}", c, app.app_custom_input);
+                tracing::debug!(
+                    "[custom_input] typed {:?} — buffer={:?}",
+                    c,
+                    app.app_custom_input
+                );
             }
         }
         _ => {}
@@ -1271,7 +1304,11 @@ fn handle_installing_keys(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Char(c) => {
             app.install_input.push(c);
-            tracing::debug!("[installing] typed {:?} — buffer={:?}", c, app.install_input);
+            tracing::debug!(
+                "[installing] typed {:?} — buffer={:?}",
+                c,
+                app.install_input
+            );
         }
         KeyCode::Backspace => {
             app.install_input.pop();
@@ -1314,7 +1351,8 @@ fn start_install(app: &mut App) {
     let mgr = app.active_package_manager().to_string();
     tracing::info!(
         "[start_install] manager={} selected_ids={:?}",
-        mgr, app.app_selected_ids
+        mgr,
+        app.app_selected_ids
     );
 
     if requires_sudo(&mgr) && !is_root() {
@@ -1324,7 +1362,10 @@ fn start_install(app: &mut App) {
         );
         app.app_sudo_pending = true;
         app.app_sudo_command = build_commands(app);
-        tracing::debug!("[start_install] staged sudo commands: {:?}", app.app_sudo_command);
+        tracing::debug!(
+            "[start_install] staged sudo commands: {:?}",
+            app.app_sudo_command
+        );
         app.app_focus = AppFocus::SudoConfirm;
         return;
     }
@@ -1374,7 +1415,8 @@ fn build_commands(app: &App) -> Vec<String> {
 
     tracing::info!(
         "[build_commands] built {} command(s) for manager={}",
-        commands.len(), mgr
+        commands.len(),
+        mgr
     );
     commands
 }
@@ -1391,14 +1433,17 @@ fn execute_install(app: &mut App, use_sudo: bool) {
 
     tracing::info!(
         "[execute_install] starting — use_sudo={} manager={} command_count={}",
-        use_sudo, app.active_package_manager(), commands.len()
+        use_sudo,
+        app.active_package_manager(),
+        commands.len()
     );
     for cmd in &commands {
         tracing::debug!("[execute_install] queued: {}", cmd);
     }
 
     app.app_install_log.clear();
-    app.app_install_log.push("Starting installation...".to_string());
+    app.app_install_log
+        .push("Starting installation...".to_string());
     app.app_installing = true;
     app.app_focus = AppFocus::Installing;
 
@@ -1425,20 +1470,24 @@ fn execute_install(app: &mut App, use_sudo: bool) {
                 Ok(mut child) => {
                     tracing::debug!(
                         "[execute_install:thread] spawned {} pid={:?}",
-                        binary, child.id()
+                        binary,
+                        child.id()
                     );
-                    if let Some(stdout) = child.stdout.take() {
-                        if !drain_stdout_to_log(stdout, &tx, "execute_install") {
+                    if let Some(stdout) = child.stdout.take()
+                        && !drain_stdout_to_log(stdout, &tx, "execute_install") {
                             return;
-                        }
                     }
                     if let Some(stderr) = child.stderr.take() {
                         for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                             let line = sanitize_line(line);
-                            if is_noise_line(&line) { continue; }
+                            if is_noise_line(&line) {
+                                continue;
+                            }
                             tracing::debug!("[execute_install:stderr] {}", line);
                             if tx.send(format!("[err] {}", line)).is_err() {
-                                tracing::warn!("[execute_install:stderr] channel closed — stopping");
+                                tracing::warn!(
+                                    "[execute_install:stderr] channel closed — stopping"
+                                );
                                 return;
                             }
                         }
@@ -1453,7 +1502,11 @@ fn execute_install(app: &mut App, use_sudo: bool) {
                             let _ = tx.send(format!("✗ Failed (exit {})", s));
                         }
                         Err(e) => {
-                            tracing::error!("[execute_install:thread] wait error for {}: {}", binary, e);
+                            tracing::error!(
+                                "[execute_install:thread] wait error for {}: {}",
+                                binary,
+                                e
+                            );
                             let _ = tx.send(format!("✗ Error: {}", e));
                         }
                     }
@@ -1473,7 +1526,7 @@ fn render_sudo_confirmation(frame: &mut Frame, app: &App) {
     let area = centered_rect(50, 30, frame.area());
     frame.render_widget(Clear, area);
 
-    let mgr   = app.active_package_manager();
+    let mgr = app.active_package_manager();
     let count = app.app_selected_ids.len();
 
     let text = vec![
@@ -1491,7 +1544,9 @@ fn render_sudo_confirmation(frame: &mut Frame, app: &App) {
         Line::from(vec![
             Span::styled(
                 "  [y] ",
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled("Run with sudo    ", Style::default().fg(Color::White)),
             Span::styled(
@@ -1512,12 +1567,17 @@ fn render_sudo_confirmation(frame: &mut Frame, app: &App) {
     frame.render_widget(modal, area);
 }
 
-// ─── Public types ─────────────────────────────────────────────────────────────
-
-/// A single result row from `winget search`.
-#[derive(Debug, Clone)]
-pub struct SearchResult {
-    pub name:    String,
-    pub id:      String,
-    pub version: String,
+// helper:
+fn pm_description(pm: &PackageManager) -> &'static str {
+    match pm {
+        PackageManager::Winget => "Windows built-in, largest catalog",
+        PackageManager::Scoop  => "portable installs, no admin needed",
+        PackageManager::Choco  => "traditional installs, wide support",
+        PackageManager::Apt    => "Debian/Ubuntu",
+        PackageManager::Dnf    => "Red Hat/Fedora",
+        PackageManager::Pacman => "Arch Linux default package manager",
+        PackageManager::Yay    => "Yay(Yet Another Yogurt) package manager for AUR",
+        PackageManager::Xbps   => "Void Linux",
+        _                      => "",
+    }
 }

@@ -6,7 +6,6 @@ use ratatui::{
     Frame,
     widgets::{Block, Tabs}
 };
-use ratatui::widgets::Borders;
 use crate::models::TabModel;
 
 pub fn render_tab(frame: &mut Frame, area: Rect, active: TabModel) {
