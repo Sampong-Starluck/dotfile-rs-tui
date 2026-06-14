@@ -49,6 +49,38 @@ pub fn parse_search_output(mgr: &str, text: &str) -> Vec<SearchResult> {
     }
 }
 
+/// Returns (binary, args) for listing installed packages.
+pub fn list_command(mgr: &str) -> (String, Vec<String>) {
+    match mgr {
+        "pacman" | "yay" | "paru" => (mgr.into(), vec!["-Q".into()]),
+        "apt" | "apt-get"          => ("apt".into(),      vec!["list".into(), "--installed".into()]),
+        "dnf" | "yum"              => (mgr.into(),        vec!["list".into(), "installed".into()]),
+        "xbps-install"             => ("xbps-query".into(), vec!["-l".into()]),
+        "apk"                      => ("apk".into(),      vec!["list".into(), "--installed".into()]),
+        "brew"                     => ("brew".into(),     vec!["list".into(), "--formula".into()]),
+        "winget"                   => ("winget".into(),   vec!["list".into()]),
+        "scoop"                    => ("scoop".into(),    vec!["list".into()]),
+        "choco"                    => ("choco".into(),    vec!["list".into(), "--local-only".into()]),
+        _                          => (mgr.into(),        vec!["list".into()]),
+    }
+}
+
+/// Parse installed-package list output for each manager.
+pub fn parse_list_output(mgr: &str, text: &str) -> Vec<SearchResult> {
+    match mgr {
+        "pacman" | "yay" | "paru"  => parse_pacman_list(text),
+        "apt" | "apt-get"          => parse_apt_list(text),
+        "dnf" | "yum"              => parse_dnf_list(text),
+        "xbps-install"             => parse_xbps_list(text),
+        "apk"                      => parse_apk_list(text),
+        "brew"                     => parse_brew_list(text),
+        "winget"                   => parse_winget_search(text),
+        "scoop"                    => parse_scoop_search(text),
+        "choco"                    => parse_choco_list(text),
+        _                          => vec![],
+    }
+}
+
 /// Hint shown in the search input box for each manager.
 pub fn search_hint(mgr: &str) -> &'static str {
     match mgr {
@@ -286,6 +318,117 @@ fn parse_apk_search(output: &str) -> Vec<SearchResult> {
             let (name, version) = split_pkg_name_version(pkg);
             if name.is_empty() { return None; }
             tracing::debug!("[parse_apk] name={:?} ver={:?}", name, version);
+            Some(SearchResult { id: name.clone(), name, version })
+        })
+        .collect()
+}
+
+// ─── Installed-list parsers ───────────────────────────────────────────────────
+
+/// `pacman -Q` / `yay -Q` / `paru -Q` — "name version" per line.
+fn parse_pacman_list(output: &str) -> Vec<SearchResult> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim_end_matches('\r').trim();
+            if line.is_empty() { return None; }
+            let mut tokens = line.split_whitespace();
+            let name    = tokens.next()?.to_string();
+            let version = tokens.next().unwrap_or("").to_string();
+            Some(SearchResult { id: name.clone(), name, version })
+        })
+        .collect()
+}
+
+/// `apt list --installed` — "pkg/suite now version arch [installed]"
+fn parse_apt_list(output: &str) -> Vec<SearchResult> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim_end_matches('\r').trim();
+            if line.is_empty() || line.starts_with("Listing") { return None; }
+            let name = line.split('/').next()?.trim().to_string();
+            let version = line.split_whitespace().nth(1).unwrap_or("").to_string();
+            if name.is_empty() { return None; }
+            Some(SearchResult { id: name.clone(), name, version })
+        })
+        .collect()
+}
+
+/// `dnf list installed` — "name.arch version @repo"
+fn parse_dnf_list(output: &str) -> Vec<SearchResult> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim_end_matches('\r').trim();
+            if line.is_empty()
+                || line.starts_with("Installed")
+                || line.starts_with("Last metadata")
+                || line.starts_with("Available")
+            {
+                return None;
+            }
+            let mut tokens = line.split_whitespace();
+            let full_name = tokens.next()?.to_string();
+            let version   = tokens.next().unwrap_or("").to_string();
+            let name = full_name.split('.').next().unwrap_or(&full_name).to_string();
+            if name.is_empty() { return None; }
+            Some(SearchResult { id: name.clone(), name, version })
+        })
+        .collect()
+}
+
+/// `xbps-query -l` — "[*] pkg-ver description"
+fn parse_xbps_list(output: &str) -> Vec<SearchResult> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim_end_matches('\r').trim();
+            if line.is_empty() { return None; }
+            let rest = if line.starts_with("[*]") || line.starts_with("[-]") {
+                line[3..].trim()
+            } else { line };
+            let pkg = rest.split_whitespace().next().unwrap_or("");
+            let (name, version) = split_pkg_name_version(pkg);
+            if name.is_empty() { return None; }
+            Some(SearchResult { id: name.clone(), name, version })
+        })
+        .collect()
+}
+
+/// `apk list --installed` — same format as apk search
+fn parse_apk_list(output: &str) -> Vec<SearchResult> {
+    parse_apk_search(output)
+}
+
+/// `brew list --formula` — one package name per line
+fn parse_brew_list(output: &str) -> Vec<SearchResult> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let name = line.trim_end_matches('\r').trim().to_string();
+            if name.is_empty() { return None; }
+            Some(SearchResult { id: name.clone(), name, version: String::new() })
+        })
+        .collect()
+}
+
+/// `choco list --local-only` — "name version" per data line
+fn parse_choco_list(output: &str) -> Vec<SearchResult> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim_end_matches('\r').trim();
+            if line.is_empty()
+                || line.starts_with("Chocolatey")
+                || line.contains("packages installed")
+            {
+                return None;
+            }
+            let mut tokens = line.split_whitespace();
+            let name    = tokens.next()?.to_string();
+            let version = tokens.next().unwrap_or("").to_string();
+            if name.is_empty() { return None; }
             Some(SearchResult { id: name.clone(), name, version })
         })
         .collect()

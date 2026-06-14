@@ -6,7 +6,7 @@ use std::sync::mpsc::Sender;
 use crate::{
     enumerate::AppFocus,
     models::{Apps, OperatingSystem, PackageManager, TabModel},
-    service::SearchResult
+    service::SearchResult,
 };
 
 pub struct App {
@@ -32,15 +32,30 @@ pub struct App {
     pub app_sudo_password:    String,
     pub install_tx:           Option<Sender<String>>,
     pub install_input:        String,
-    pub pm_picker_selected: usize,  // ← add
-    pub search_origin: AppFocus,  // ← add
+    pub pm_picker_selected: usize,
+    pub search_origin: AppFocus,
 
-    // winget search
+    // package search
     pub search_query:    String,
     pub search_results:  Vec<SearchResult>,
     pub search_selected: usize,
     pub search_loading:  bool,
     pub search_rx:       Option<Receiver<Vec<SearchResult>>>,
+
+    // installed packages view
+    pub installed_packages:  Vec<SearchResult>,
+    pub installed_loading:   bool,
+    pub installed_rx:        Option<Receiver<Vec<SearchResult>>>,
+    pub installed_selected:  usize,
+    pub installed_set:       HashSet<String>,  // pkg names for O(1) lookup in search panel
+    pub app_remove_mode:     bool,
+
+    // animation
+    pub loading_tick: u8,
+
+    // interactive command execution (leave TUI, run in real terminal, return)
+    pub run_external:          Vec<String>,  // commands to execute
+    pub run_external_removing: bool,         // true → refresh installed list on return
 }
 
 impl App {
@@ -70,13 +85,23 @@ impl App {
             install_tx:           None,
             install_input:        String::new(),
             pm_picker_selected:   0,
-            search_origin:        AppFocus::Section,  // ← add
-            // winget search
+            search_origin:        AppFocus::Section,
+            // package search
             search_query:         String::new(),
             search_results:       Vec::new(),
             search_selected:      0,
             search_loading:       false,
             search_rx:            None,
+            // installed packages view
+            installed_packages:   Vec::new(),
+            installed_loading:    false,
+            installed_rx:         None,
+            installed_selected:   0,
+            installed_set:        HashSet::new(),
+            app_remove_mode:      false,
+            loading_tick:         0,
+            run_external:          Vec::new(),
+            run_external_removing: false,
         }
     }
 
@@ -107,6 +132,18 @@ impl App {
         if self.package_managers.is_empty() { return; }
         self.selected_pm = (self.selected_pm + 1) % self.package_managers.len();
         self.reset_scroll();
+    }
+
+    /// True whenever the user is actively typing — global shortcuts like `q`
+    /// must be suppressed so they don't steal characters from the input buffer.
+    pub fn is_text_input_focus(&self) -> bool {
+        matches!(
+            self.app_focus,
+            AppFocus::Search
+                | AppFocus::CustomInput
+                | AppFocus::Installing
+                | AppFocus::SudoConfirm
+        )
     }
 
     pub fn previous_pkg(&mut self) {

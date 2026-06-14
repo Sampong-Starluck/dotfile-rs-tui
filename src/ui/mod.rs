@@ -46,16 +46,17 @@ pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
             ],
             AppFocus::Section => {
                 let mgr = app.active_package_manager();
-                let i_hint = if mgr == "winget" { " search  " } else { " add package  " };
                 vec![
                     styled_key("↑↓/jk"),
                     plain(" navigate  "),
                     styled_key("Space/Enter"),
                     plain(" open section  "),
                     styled_key("i"),
-                    plain(i_hint),
+                    plain(" search  "),
+                    styled_key("l"),
+                    plain(" installed  "),
                     styled_key("p"),
-                    plain(&format!(" select package manager [{}]  ", mgr)),
+                    plain(&format!(" pkg manager [{}]  ", mgr)),
                     styled_key("d"),
                     plain(" install selected  "),
                     styled_key("Tab"),
@@ -63,11 +64,6 @@ pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
                 ]
             }
             AppFocus::Apps => {
-                let i_hint = if app.active_package_manager() == "winget" {
-                    " search  "
-                } else {
-                    " add package  "
-                };
                 let mgr = app.active_package_manager();
                 vec![
                     styled_key("↑↓/jk"),
@@ -75,15 +71,29 @@ pub fn render_status(frame: &mut Frame, area: Rect, app: &App) {
                     styled_key("Space"),
                     plain(" toggle select  "),
                     styled_key("i"),
-                    plain(i_hint),
+                    plain(" search  "),
+                    styled_key("l"),
+                    plain(" installed  "),
                     styled_key("p"),
-                    plain(&format!(" select package manager [{}]  ", mgr)),
+                    plain(&format!(" pkg manager [{}]  ", mgr)),
                     styled_key("d"),
                     plain(" install  "),
                     styled_key("Esc"),
-                    plain(" back to sections"),
+                    plain(" back"),
                 ]
             }
+            AppFocus::Installed => vec![
+                styled_key("↑↓/jk"),
+                plain(" navigate  "),
+                styled_key("Space"),
+                plain(" select  "),
+                styled_key("d"),
+                plain(" remove selected  "),
+                styled_key("r"),
+                plain(" refresh  "),
+                styled_key("Esc"),
+                plain(" back"),
+            ],
             AppFocus::CustomInput => vec![
                 styled_key("type"),
                 plain(" enter package name  "),

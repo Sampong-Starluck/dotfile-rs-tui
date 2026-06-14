@@ -21,6 +21,25 @@ pub fn get_install_command(entry: &AppEntry, detected_mgr: &str) -> Option<Strin
     Some(install_command(mgr, pkg))
 }
 
+pub fn remove_command(mgr: &str, pkg: &str) -> String {
+    match mgr {
+        "pacman"       => format!("pacman -R {}", pkg),
+        "yay"          => format!("yay -R {}", pkg),
+        "paru"         => format!("paru -R {}", pkg),
+        "apt"          => format!("apt remove -y {}", pkg),
+        "apt-get"      => format!("apt-get remove -y {}", pkg),
+        "dnf"          => format!("dnf remove -y {}", pkg),
+        "yum"          => format!("yum remove -y {}", pkg),
+        "xbps-install" => format!("xbps-remove {}", pkg),
+        "apk"          => format!("apk del {}", pkg),
+        "brew"         => format!("brew uninstall {}", pkg),
+        "winget"       => format!("winget uninstall --id {} -e", pkg),
+        "scoop"        => format!("scoop uninstall {}", pkg),
+        "choco"        => format!("choco uninstall {} -y", pkg),
+        _              => format!("{} remove {}", mgr, pkg),
+    }
+}
+
 pub fn install_command(mgr: &str, pkg: &str) -> String {
     match mgr {
         "pacman"       => format!("pacman -S {}", pkg),

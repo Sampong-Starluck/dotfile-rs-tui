@@ -3,12 +3,13 @@ use crate::{
     enumerate::AppFocus,
     models::Apps,
     service::{
-        filter_apps_by_platform, get_install_command, install_command,
+        filter_apps_by_platform, get_install_command, install_command, remove_command,
         is_root, read_apps_json, requires_interactive, requires_sudo,
-        search_command, decode_search_output, parse_search_output,   // ← new
-        search_hint,                                                  // ← new
-        SearchResult
-    }
+        search_command, decode_search_output, parse_search_output,
+        list_command, parse_list_output,
+        search_hint,
+        SearchResult,
+    },
 };
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -64,7 +65,7 @@ pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
         }
     }
 
-    // Drain search result channel (winget only)
+    // Drain search result channel
     if let Some(rx) = &app.search_rx
         && let Ok(results) = rx.try_recv()
     {
@@ -75,13 +76,24 @@ pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
         app.search_rx = None;
     }
 
+    // Drain installed packages channel
+    if let Some(rx) = &app.installed_rx
+        && let Ok(results) = rx.try_recv()
+    {
+        tracing::info!("[app_render] received {} installed packages", results.len());
+        app.installed_set = results.iter().map(|r| r.name.clone()).collect();
+        app.installed_packages = results;
+        app.installed_loading = false;
+        app.installed_selected = 0;
+        app.installed_rx = None;
+    }
+
     render_sidebar(frame, sidebar, apps, app);
 
-    // If in Search focus, replace the apps list panel with search results
-    if app.app_focus == AppFocus::Search {
-        render_search_panel(frame, body_chunks[0], app);
-    } else {
-        render_app_list(frame, body_chunks[0], apps, app);
+    match app.app_focus {
+        AppFocus::Search    => render_search_panel(frame, body_chunks[0], app),
+        AppFocus::Installed => render_installed_panel(frame, body_chunks[0], app),
+        _                   => render_app_list(frame, body_chunks[0], apps, app),
     }
 
     render_custom_input(frame, body_chunks[1], app);
@@ -211,37 +223,33 @@ fn render_app_list(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) {
         return;
     };
 
+    let inner_w = area.width.saturating_sub(2) as usize;
+
     let items: Vec<ListItem> = section
         .apps
         .iter()
         .enumerate()
         .map(|(i, entry)| {
-            let is_cursor = focused && i == app.app_selected_app;
+            let is_cursor   = focused && i == app.app_selected_app;
             let is_selected = app.app_selected_ids.contains(&entry.id);
 
             let checkbox = if is_selected { "[✓]" } else { "[ ]" };
-            let arrow = if is_cursor { "▶ " } else { "  " };
+            let arrow    = if is_cursor   { "▶ " }  else { "  " };
 
-            // render_app_list — replace the style match block
             let style = match (is_cursor, is_selected) {
-                (true, true) => Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Green) // ← green bg = selected + cursor
-                    .add_modifier(Modifier::BOLD),
-                (true, false) => Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan) // ← cyan bg = cursor only
-                    .add_modifier(Modifier::BOLD),
-                (false, true) => Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD), // ← green text = selected, no cursor
+                (true, true)  => Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD),
+                (true, false) => Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                (false, true) => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
                 (false, false) => Style::default().fg(Color::DarkGray),
             };
 
-            ListItem::new(Line::from(Span::styled(
-                format!("{}{} {}", arrow, checkbox, entry.name),
-                style,
-            )))
+            // Pad to inner_w so the background fills the full row width
+            let prefix     = format!("{}{} ", arrow, checkbox);
+            let prefix_len = prefix.chars().count();
+            let name_w     = inner_w.saturating_sub(prefix_len);
+            let line       = format!("{}{:<name_w$}", prefix, truncate(&entry.name, name_w), name_w = name_w);
+
+            ListItem::new(Line::from(Span::styled(line, style)))
         })
         .collect();
 
@@ -276,12 +284,18 @@ fn render_app_list(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) {
 
 // ─── Search panel (winget only) ──────────────────────────────────────────────
 
-fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
-    let mgr = app.active_package_manager();
+const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-    // Title shows query and result count
+fn spinner(tick: u8) -> &'static str {
+    SPINNER[tick as usize % SPINNER.len()]
+}
+
+fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
+    let mgr  = app.active_package_manager();
+    let spin = spinner(app.loading_tick);
+
     let title = if app.search_loading {
-        format!(" Search [{}] — searching… ", mgr)
+        format!(" {} Search [{}] — searching… ", spin, mgr)
     } else if app.search_results.is_empty() && !app.search_query.is_empty() {
         format!(" Search [{}] — no results ", mgr)
     } else {
@@ -292,7 +306,7 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
         let loading = Paragraph::new(vec![
             Line::from(""),
             Line::from(Span::styled(
-                "  Searching, please wait…",
+                format!("  {} Searching, please wait…", spin),
                 Style::default().fg(Color::Yellow),
             )),
         ])
@@ -329,77 +343,52 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
         return;
     }
 
-    // Compute visible column widths — name gets ~50%, id gets ~35%, version ~15%
-    let inner_w = area.width.saturating_sub(2); // subtract borders
-    let name_w = (inner_w as f32 * 0.40) as usize;
-    let id_w = (inner_w as f32 * 0.40) as usize;
-    let ver_w = inner_w.saturating_sub((name_w + id_w) as u16) as usize;
+    // prefix = arrow(2) + checkbox(3) + space(1) = 6 chars
+    // columns fill remaining space with 2-char gaps between them
+    let inner_w   = area.width.saturating_sub(2) as usize;
+    let available = inner_w.saturating_sub(6 + 4); // 6 prefix + 4 gaps (2×"  ")
+    let id_w      = (available as f32 * 0.40) as usize;
+    let name_w    = (available as f32 * 0.40) as usize;
+    let ver_w     = available.saturating_sub(id_w + name_w);
 
     let items: Vec<ListItem> = app
         .search_results
         .iter()
         .enumerate()
         .map(|(i, result)| {
-            let is_cursor = i == app.search_selected;
-            let is_picked = app.app_selected_ids.contains(&result.id);
+            let is_cursor    = i == app.search_selected;
+            let is_picked    = app.app_selected_ids.contains(&result.id);
+            let is_installed = app.installed_set.contains(&result.name)
+                || app.installed_set.contains(&result.id);
 
-            let checkbox = if is_picked { "[✓]" } else { "[ ]" };
-            let arrow = if is_cursor { "▶ " } else { "  " };
+            let checkbox = if is_picked { "[✓]" } else if is_installed { "[I]" } else { "[ ]" };
+            let arrow    = if is_cursor { "▶ " } else { "  " };
 
-            // Truncate each column to its allotted width
-            let name = truncate(&result.name, name_w);
-            let id = truncate(&result.id, id_w);
-            let ver = truncate(&result.version, ver_w);
+            let id   = truncate(&result.id,      id_w);
+            let name = truncate(&result.name,    name_w);
+            let ver  = truncate(&result.version, ver_w);
 
-            // let style = match (is_cursor, is_picked) {
-            //     (true, _) => Style::default()
-            //         .fg(Color::Cyan)
-            //         .add_modifier(Modifier::BOLD),
-            //     (_, true) => Style::default().fg(Color::Green),
-            //     _ => Style::default().fg(Color::White),
-            // };
-            let style = match (is_cursor, is_picked) {
-                (true, true) => Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Green)
-                    .add_modifier(Modifier::BOLD), // ← green bg = selected + cursor
-                (true, false) => Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD), // ← cyan bg = cursor only
-                (false, true) => Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD), // ← green text = selected, no cursor
+            let bg = if is_cursor && is_picked { Color::Green }
+                     else if is_cursor         { Color::Cyan  }
+                     else                      { Color::Reset };
+
+            let base_style = match (is_cursor, is_picked) {
+                (true, true)  => Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD),
+                (true, false) => Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                (false, true) => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
                 (false, false) => Style::default().fg(Color::DarkGray),
             };
 
+            // Each column span carries the same bg so the highlight fills the full row.
+            let id_style   = Style::default().fg(if is_cursor { Color::Black } else { Color::Yellow }).bg(bg);
+            let name_style = base_style;
+            let ver_style  = Style::default().fg(if is_cursor { Color::Black } else { Color::DarkGray }).bg(bg);
+
             ListItem::new(Line::from(vec![
-                Span::styled(format!("{}{} ", arrow, checkbox), style),
-                Span::styled(
-                    format!("{:<width$}  ", id, width = id_w),
-                    Style::default()
-                        .fg(if is_cursor {
-                            Color::Black
-                        } else {
-                            Color::Yellow
-                        })
-                        .bg(if is_cursor && is_picked {
-                            Color::Green
-                        } else if is_cursor {
-                            Color::Cyan
-                        } else {
-                            Color::Reset
-                        }),
-                ),
-                Span::styled(
-                    format!("{:<width$}  ", id, width = id_w),
-                    Style::default().fg(if is_cursor {
-                        Color::Cyan
-                    } else {
-                        Color::Yellow
-                    }),
-                ),
-                Span::styled(ver, Style::default().fg(Color::DarkGray)),
+                Span::styled(format!("{}{} ", arrow, checkbox), base_style),
+                Span::styled(format!("{:<id_w$}  ",   id,   id_w   = id_w),   id_style),
+                Span::styled(format!("{:<name_w$}  ", name, name_w = name_w), name_style),
+                Span::styled(format!("{:<ver_w$}",    ver,  ver_w  = ver_w),  ver_style),
             ]))
         })
         .collect();
@@ -422,6 +411,101 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
                 .borders(Borders::ALL)
                 .title(title)
                 .border_style(Style::default().fg(Color::Cyan)),
+        )
+        .highlight_symbol("");
+
+    frame.render_stateful_widget(list, area, &mut list_state);
+}
+
+fn render_installed_panel(frame: &mut Frame, area: Rect, app: &App) {
+    let mgr  = app.active_package_manager();
+    let spin = spinner(app.loading_tick);
+
+    let title = if app.installed_loading {
+        format!(" {} Installed [{}] — loading… ", spin, mgr)
+    } else {
+        format!(" Installed [{}] — {} package(s)  [Space] select  [d] remove  [r] refresh ", mgr, app.installed_packages.len())
+    };
+
+    if app.installed_loading {
+        let loading = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                format!("  {} Loading installed packages…", spin),
+                Style::default().fg(Color::Yellow),
+            )),
+        ])
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(Color::Yellow)),
+        );
+        frame.render_widget(loading, area);
+        return;
+    }
+
+    if app.installed_packages.is_empty() {
+        let empty = Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(
+                "  No installed packages found. Press [r] to refresh.",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ])
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(Color::DarkGray)),
+        );
+        frame.render_widget(empty, area);
+        return;
+    }
+
+    let inner_w = area.width.saturating_sub(2) as usize;
+    let ver_w   = 16usize;
+    let name_w  = inner_w.saturating_sub(ver_w + 8);
+
+    let items: Vec<ListItem> = app
+        .installed_packages
+        .iter()
+        .enumerate()
+        .map(|(i, pkg)| {
+            let is_cursor  = i == app.installed_selected;
+            let is_picked  = app.app_selected_ids.contains(&pkg.id);
+
+            let checkbox = if is_picked { "[✓]" } else { "[ ]" };
+            let arrow    = if is_cursor { "▶ " } else { "  " };
+
+            let style = match (is_cursor, is_picked) {
+                (true, true)  => Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD),
+                (true, false) => Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                (false, true) => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                (false, false) => Style::default().fg(Color::DarkGray),
+            };
+
+            let name = truncate(&pkg.name, name_w);
+            let ver  = truncate(&pkg.version, ver_w);
+
+            // Pad to inner_w so the background fills the full row width.
+            // name_w + ver_w + 8 == inner_w by construction.
+            let line = format!("{}{} {:<name_w$}  {:<ver_w$}", arrow, checkbox, name, ver,
+                               name_w = name_w, ver_w = ver_w);
+
+            ListItem::new(Line::from(Span::styled(line, style)))
+        })
+        .collect();
+
+    let mut list_state = ListState::default();
+    list_state.select(Some(app.installed_selected));
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(Color::Red)),
         )
         .highlight_symbol("");
 
@@ -577,13 +661,14 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 pub fn handle_key(app: &mut App, key: KeyEvent) {
     tracing::debug!("[handle_key] focus={:?} key={:?}", app.app_focus, key.code);
     match app.app_focus {
-        AppFocus::Section => handle_section_keys(app, key),
-        AppFocus::Apps => handle_apps_keys(app, key),
+        AppFocus::Section     => handle_section_keys(app, key),
+        AppFocus::Apps        => handle_apps_keys(app, key),
         AppFocus::CustomInput => handle_custom_input_keys(app, key),
-        AppFocus::Search => handle_search_keys(app, key),
-        AppFocus::Installing => handle_installing_keys(app, key),
+        AppFocus::Search      => handle_search_keys(app, key),
+        AppFocus::Installed   => handle_installed_keys(app, key),
+        AppFocus::Installing  => handle_installing_keys(app, key),
         AppFocus::SudoConfirm => handle_sudo_confirm_keys(app, key),
-        AppFocus::PmPicker => handle_pm_picker_keys(app, key),
+        AppFocus::PmPicker    => handle_pm_picker_keys(app, key),
     }
 }
 
@@ -610,6 +695,12 @@ fn handle_pm_picker_keys(app: &mut App, key: KeyEvent) {
                 app.search_results.clear();
                 app.search_loading        = false;
                 app.search_rx             = None;
+                app.installed_packages.clear();
+                app.installed_set.clear();
+                app.installed_loading     = false;
+                app.installed_rx          = None;
+                app.installed_selected    = 0;
+                app.app_remove_mode       = false;
                 tracing::info!(
                     "[pm_picker] switched to manager={}",
                     app.active_package_manager()
@@ -1150,11 +1241,19 @@ fn handle_section_keys(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char('i') => {
             app.search_origin = AppFocus::Section;
-            app.app_focus = AppFocus::Search;  // ← always Search, no mgr check
+            app.app_focus = AppFocus::Search;
             app.search_query.clear();
             app.search_results.clear();
             app.search_loading = false;
             tracing::info!("[section] 'i' — opening search for mgr={}", app.active_package_manager());
+        }
+        KeyCode::Char('l') => {
+            app.search_origin = AppFocus::Section;
+            app.app_focus = AppFocus::Installed;
+            app.app_selected_ids.clear();
+            app.app_remove_mode = true;
+            run_list_installed(app);
+            tracing::info!("[section] 'l' — opening installed view for mgr={}", app.active_package_manager());
         }
         KeyCode::Char('p') => {
             app.pm_picker_selected = app.selected_pm;
@@ -1223,11 +1322,19 @@ fn handle_apps_keys(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Char('i') => {
             app.search_origin = AppFocus::Apps;
-            app.app_focus = AppFocus::Search;  // ← always Search, no mgr check
+            app.app_focus = AppFocus::Search;
             app.search_query.clear();
             app.search_results.clear();
             app.search_loading = false;
             tracing::info!("[apps] 'i' — opening search for mgr={}", app.active_package_manager());
+        }
+        KeyCode::Char('l') => {
+            app.search_origin = AppFocus::Apps;
+            app.app_focus = AppFocus::Installed;
+            app.app_selected_ids.clear();
+            app.app_remove_mode = true;
+            run_list_installed(app);
+            tracing::info!("[apps] 'l' — opening installed view for mgr={}", app.active_package_manager());
         }
         KeyCode::Char('d') => {
             tracing::info!(
@@ -1327,19 +1434,236 @@ fn handle_installing_keys(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Esc => {
             tracing::info!(
-                "[installing] Esc — user closed install modal (log_lines={})",
+                "[installing] Esc — user closed modal (log_lines={})",
                 app.app_install_log.len()
             );
             app.app_installing = false;
-            app.app_focus = AppFocus::Section;
             app.install_rx = None;
             app.install_tx = None;
             app.install_input.clear();
             app.app_selected_ids.clear();
             app.app_install_log.clear();
+            if app.app_remove_mode {
+                // go back to installed view and refresh
+                app.app_focus = AppFocus::Installed;
+                app.installed_packages.clear();
+                app.installed_set.clear();
+                run_list_installed(app);
+            } else {
+                app.app_focus = AppFocus::Section;
+            }
         }
         _ => {}
     }
+}
+
+// ─── Installed packages key handler ──────────────────────────────────────────
+
+fn handle_installed_keys(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Up | KeyCode::Char('k') => {
+            if app.installed_selected > 0 {
+                app.installed_selected -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if app.installed_selected < app.installed_packages.len().saturating_sub(1) {
+                app.installed_selected += 1;
+            }
+        }
+        KeyCode::Char(' ') => {
+            if let Some(pkg) = app.installed_packages.get(app.installed_selected) {
+                let id = pkg.id.clone();
+                if app.app_selected_ids.contains(&id) {
+                    app.app_selected_ids.remove(&id);
+                } else {
+                    app.app_selected_ids.insert(id);
+                }
+            }
+        }
+        KeyCode::Char('d') => {
+            tracing::info!(
+                "[installed] remove triggered — selected_count={}",
+                app.app_selected_ids.len()
+            );
+            start_remove(app);
+        }
+        KeyCode::Char('r') => {
+            app.installed_packages.clear();
+            app.installed_set.clear();
+            app.app_selected_ids.clear();
+            run_list_installed(app);
+            tracing::info!("[installed] refreshing installed list");
+        }
+        KeyCode::Esc => {
+            app.app_focus = app.search_origin;
+            app.app_remove_mode = false;
+            app.app_selected_ids.clear();
+            tracing::info!("[installed] closed — returning to {:?}", app.search_origin);
+        }
+        _ => {}
+    }
+}
+
+fn run_list_installed(app: &mut App) {
+    let mgr = app.active_package_manager().to_string();
+    tracing::info!("[run_list_installed] querying installed packages via {}", mgr);
+
+    app.installed_loading = true;
+    app.installed_packages.clear();
+    app.installed_rx = None;
+
+    let (tx, rx) = mpsc::channel::<Vec<SearchResult>>();
+    app.installed_rx = Some(rx);
+
+    thread::spawn(move || {
+        let (cmd, args) = list_command(&mgr);
+        match Command::new(&cmd).args(&args).stdout(Stdio::piped()).stderr(Stdio::null()).output() {
+            Ok(out) => {
+                let text    = String::from_utf8_lossy(&out.stdout).into_owned();
+                let results = parse_list_output(&mgr, &text);
+                tracing::info!("[run_list_installed:thread] {} packages found via {}", results.len(), mgr);
+                let _ = tx.send(results);
+            }
+            Err(e) => {
+                tracing::error!("[run_list_installed:thread] failed to run {}: {}", cmd, e);
+                let _ = tx.send(vec![]);
+            }
+        }
+    });
+}
+
+fn start_remove(app: &mut App) {
+    if app.app_selected_ids.is_empty() {
+        tracing::warn!("[start_remove] called with no packages selected — aborting");
+        return;
+    }
+
+    let mgr = app.active_package_manager().to_string();
+    tracing::info!(
+        "[start_remove] manager={} selected_ids={:?}",
+        mgr,
+        app.app_selected_ids
+    );
+
+    if requires_interactive(&mgr) {
+        let commands = build_remove_commands(app);
+        let ext_cmds = if requires_sudo(&mgr) && !is_root() {
+            commands.into_iter().map(|c| format!("sudo {}", c)).collect()
+        } else {
+            commands
+        };
+        tracing::info!(
+            "[start_remove] {} is interactive — queuing external execution: {:?}",
+            mgr, ext_cmds
+        );
+        app.run_external          = ext_cmds;
+        app.run_external_removing = true;
+        return;
+    }
+
+    if requires_sudo(&mgr) && !is_root() {
+        app.app_sudo_pending = true;
+        app.app_sudo_command = build_remove_commands(app);
+        app.app_focus        = AppFocus::SudoConfirm;
+        return;
+    }
+
+    execute_remove(app, false);
+}
+
+fn build_remove_commands(app: &App) -> Vec<String> {
+    let mgr = app.active_package_manager();
+    app.app_selected_ids
+        .iter()
+        .map(|id| remove_command(mgr, id))
+        .collect()
+}
+
+fn execute_remove(app: &mut App, use_sudo: bool) {
+    let commands = if use_sudo {
+        app.app_sudo_command
+            .drain(..)
+            .map(|cmd| format!("sudo {}", cmd))
+            .collect::<Vec<_>>()
+    } else {
+        build_remove_commands(app)
+    };
+
+    tracing::info!(
+        "[execute_remove] starting — use_sudo={} manager={} command_count={}",
+        use_sudo,
+        app.active_package_manager(),
+        commands.len()
+    );
+
+    app.app_install_log.clear();
+    app.app_install_log.push("Starting removal…".to_string());
+    if requires_interactive(app.active_package_manager()) {
+        app.app_install_log.push("Type y/n and press Enter to respond to prompts.".to_string());
+    }
+    app.app_installing = true;
+    app.app_focus = AppFocus::Installing;
+
+    let (out_tx, out_rx) = mpsc::channel::<String>();
+    let (in_tx, in_rx)   = mpsc::channel::<String>();
+
+    app.install_rx = Some(out_rx);
+    app.install_tx = Some(in_tx);
+
+    thread::spawn(move || {
+        let in_rx = Arc::new(Mutex::new(in_rx));
+
+        for cmd in commands {
+            let _ = out_tx.send(format!("▶ Running: {}", cmd));
+            tracing::info!("[execute_remove:thread] running: {}", cmd);
+
+            let (binary, args) = split_command(&cmd);
+            if binary.is_empty() { continue; }
+
+            match Command::new(&binary)
+                .args(&args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+            {
+                Ok(mut child) => {
+                    if let Some(mut stdin) = child.stdin.take() {
+                        use std::io::Write;
+                        let in_rx_clone = Arc::clone(&in_rx);
+                        thread::spawn(move || {
+                            while let Ok(input) = in_rx_clone.lock().unwrap().recv() {
+                                let _ = writeln!(stdin, "{}", input);
+                            }
+                        });
+                    }
+
+                    if let Some(stdout) = child.stdout.take()
+                        && !drain_stdout_to_log(stdout, &out_tx, "execute_remove") {
+                            return;
+                    }
+
+                    if let Some(stderr) = child.stderr.take() {
+                        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                            let line = sanitize_line(line);
+                            if is_noise_line(&line) { continue; }
+                            if out_tx.send(format!("[err] {}", line)).is_err() { return; }
+                        }
+                    }
+
+                    match child.wait() {
+                        Ok(s) if s.success() => { let _ = out_tx.send(format!("✓ Done: {}", binary)); }
+                        Ok(s)                => { let _ = out_tx.send(format!("✗ Failed (exit {})", s)); }
+                        Err(e)               => { let _ = out_tx.send(format!("✗ Error: {}", e)); }
+                    }
+                }
+                Err(e) => { let _ = out_tx.send(format!("✗ Could not run {}: {}", binary, e)); }
+            }
+        }
+        tracing::info!("[execute_remove:thread] all commands finished");
+        let _ = out_tx.send("═══ All done ═══".to_string());
+    });
 }
 
 fn start_install(app: &mut App) {
@@ -1355,22 +1679,34 @@ fn start_install(app: &mut App) {
         app.app_selected_ids
     );
 
-    if requires_sudo(&mgr) && !is_root() {
+    if requires_interactive(&mgr) {
+        // Interactive managers (pacman, apt, dnf, yay, paru, choco, …) write
+        // prompts directly to the controlling terminal (/dev/tty on Unix,
+        // ConPTY on Windows). Piped stdio cannot capture or forward those
+        // prompts. Solution: leave the TUI, run in the real terminal, return.
+        let commands = build_commands(app);
+        let ext_cmds = if requires_sudo(&mgr) && !is_root() {
+            commands.into_iter().map(|c| format!("sudo {}", c)).collect()
+        } else {
+            commands
+        };
         tracing::info!(
-            "[start_install] {} requires sudo and user is not root — showing sudo confirmation",
-            mgr
+            "[start_install] {} is interactive — queuing external execution: {:?}",
+            mgr, ext_cmds
         );
-        app.app_sudo_pending = true;
-        app.app_sudo_command = build_commands(app);
-        tracing::debug!(
-            "[start_install] staged sudo commands: {:?}",
-            app.app_sudo_command
-        );
-        app.app_focus = AppFocus::SudoConfirm;
+        app.run_external          = ext_cmds;
+        app.run_external_removing = false;
         return;
     }
 
-    tracing::info!("[start_install] no sudo required — running directly");
+    // Non-interactive managers (winget, brew, scoop): use the in-TUI modal.
+    if requires_sudo(&mgr) && !is_root() {
+        app.app_sudo_pending = true;
+        app.app_sudo_command = build_commands(app);
+        app.app_focus        = AppFocus::SudoConfirm;
+        return;
+    }
+
     execute_install(app, false);
 }
 
@@ -1576,7 +1912,8 @@ fn pm_description(pm: &PackageManager) -> &'static str {
         PackageManager::Apt    => "Debian/Ubuntu",
         PackageManager::Dnf    => "Red Hat/Fedora",
         PackageManager::Pacman => "Arch Linux default package manager",
-        PackageManager::Yay    => "Yay(Yet Another Yogurt) package manager for AUR",
+        PackageManager::Yay    => "Yay (Yet Another Yogurt) AUR helper",
+        PackageManager::Paru   => "Paru — feature-rich AUR helper",
         PackageManager::Xbps   => "Void Linux",
         _                      => "",
     }

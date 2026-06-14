@@ -3,9 +3,11 @@ pub enum AppFocus {
     Section,
     Apps,
     CustomInput,
-    /// Winget live search panel (replaces the apps list body)
+    /// Live search panel (replaces the apps list body)
     Search,
+    /// Installed packages list (replaces the apps list body)
+    Installed,
     Installing,
     SudoConfirm,
-    PmPicker,   // ← add
+    PmPicker,
 }

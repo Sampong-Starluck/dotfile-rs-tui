@@ -11,6 +11,7 @@ pub enum PackageManager {
     Dnf,
     Pacman,
     Yay,
+    Paru,
     Xbps,
     Brew,   // ← add this
 }
@@ -57,6 +58,14 @@ impl PackageManager {
                 PmCommand { name: "search",   command: "yay -Ss <pkg>",         description: "Search AUR and repos"       },
                 PmCommand { name: "info",     command: "yay -Si <pkg>",         description: "Show package details"       },
                 PmCommand { name: "list",     command: "yay -Q",                description: "List installed packages"    },
+            ],
+            Self::Paru => &[
+                PmCommand { name: "install",  command: "paru -S <pkg>",         description: "Install from AUR or repos"  },
+                PmCommand { name: "remove",   command: "paru -R <pkg>",         description: "Remove a package"           },
+                PmCommand { name: "update",   command: "paru -Syu",             description: "Upgrade all including AUR"  },
+                PmCommand { name: "search",   command: "paru -Ss <pkg>",        description: "Search AUR and repos"       },
+                PmCommand { name: "info",     command: "paru -Si <pkg>",        description: "Show package details"       },
+                PmCommand { name: "list",     command: "paru -Q",               description: "List installed packages"    },
             ],
             Self::Xbps => &[
                 PmCommand { name: "install",  command: "xbps-install <pkg>",    description: "Install a package"          },
@@ -111,6 +120,7 @@ impl PackageManager {
             Self::Dnf    => "dnf",
             Self::Pacman => "pacman",
             Self::Yay    => "yay",
+            Self::Paru   => "paru",
             Self::Xbps   => "xbps-install",
             Self::Brew   => "brew",       // ← add this
         }
@@ -126,6 +136,7 @@ impl PackageManager {
             Self::Dnf    => "dnf",
             Self::Pacman => "pacman",
             Self::Yay    => "yay (AUR)",
+            Self::Paru   => "paru (AUR)",
             Self::Xbps   => "xbps",
             Self::Brew   => "Homebrew",   // ← add this
         }
@@ -165,7 +176,7 @@ impl PackageManager {
             OperatingSystem::Windows => vec![Self::Winget, Self::Scoop, Self::Choco],
             OperatingSystem::MacOs   => vec![Self::Brew],
             OperatingSystem::Linux { distro } => match distro {
-                Some(LinuxDistro::Arch)   => vec![Self::Pacman, Self::Yay],
+                Some(LinuxDistro::Arch)   => vec![Self::Pacman, Self::Yay, Self::Paru],
                 Some(LinuxDistro::Debian) => vec![Self::Apt],
                 Some(LinuxDistro::Fedora) => vec![Self::Dnf],
                 Some(LinuxDistro::Void)   => vec![Self::Xbps],
