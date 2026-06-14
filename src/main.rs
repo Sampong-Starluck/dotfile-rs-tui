@@ -1,6 +1,6 @@
 use std::{io::{stdout, Write}, time::Duration};
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
+    event::{DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     event,
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen}
@@ -107,6 +107,15 @@ fn run(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> color_eyre
                 }
                 // Global keys
                 match key.code {
+                    // While help is open, only toggle/close keys pass through.
+                    _ if app.show_help => {
+                        if matches!(key.code, KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?')) {
+                            app.show_help = false;
+                        }
+                    }
+                    KeyCode::Char('?') if !app.is_text_input_focus() => {
+                        app.show_help = true;
+                    }
                     KeyCode::Tab => {
                         app.app_focus = AppFocus::Section;
                         app.app_custom_input.clear();
@@ -129,16 +138,11 @@ fn run(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> color_eyre
                     _ => match app.active_tab {
                         TabModel::Home        => ui::features::home_handle_key(&mut app, key),
                         TabModel::Application => ui::features::app_handle_key(&mut app, key),
-                        TabModel::Shell       => ui::features::shell_handle_key(&mut app, key),
                     }
                 }
             }
             Event::Mouse(mouse) => {
-                match mouse.kind {
-                    MouseEventKind::ScrollDown => app.scroll_down(),
-                    MouseEventKind::ScrollUp   => app.scroll_up(),
-                    _ => {}
-                }
+                ui::handle_mouse(&mut app, mouse);
             }
             // FIX: handle resize — Ratatui needs to know the terminal
             // changed size so it invalidates its buffer and does a full
@@ -165,6 +169,7 @@ fn run_in_terminal(
     execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
 
     // ── Run each command with full terminal access ─────────────────────────
+    println!("\n\x1b[36m  Running {} command(s)\x1b[0m", commands.len());
     for cmd in commands {
         let mut parts = cmd.split_whitespace();
         let Some(binary) = parts.next() else { continue };

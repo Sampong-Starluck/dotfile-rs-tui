@@ -1,20 +1,18 @@
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TabModel {
-    Home, Application, Shell
+    Home, Application,
 }
 
 impl TabModel {
     pub const ALL: &'static [TabModel] = &[
         TabModel::Home,
         TabModel::Application,
-        TabModel::Shell
     ];
 
     pub fn title(&self) -> &'static str {
         match self {
-            TabModel::Home => "Home",
+            TabModel::Home        => "Home",
             TabModel::Application => "Applications",
-            TabModel::Shell => "Shell"
         }
     }
 

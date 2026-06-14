@@ -3,6 +3,7 @@ use std::{
     sync::mpsc::Receiver
 };
 use std::sync::mpsc::Sender;
+use ratatui::layout::Rect;
 use crate::{
     enumerate::AppFocus,
     models::{Apps, OperatingSystem, PackageManager, TabModel},
@@ -53,9 +54,21 @@ pub struct App {
     // animation
     pub loading_tick: u8,
 
+    // set to true after the first background installed-list load per PM
+    pub installed_auto_loaded: bool,
+
     // interactive command execution (leave TUI, run in real terminal, return)
     pub run_external:          Vec<String>,  // commands to execute
     pub run_external_removing: bool,         // true → refresh installed list on return
+
+    pub show_help: bool,
+
+    // Cached layout areas — updated every render frame for mouse hit-testing
+    pub mouse_tabs:    Rect,
+    pub mouse_sidebar: Rect,
+    pub mouse_body:    Rect,
+    // Scroll offsets of the active body list — updated every render frame
+    pub body_list_offset: usize,
 }
 
 impl App {
@@ -100,8 +113,14 @@ impl App {
             installed_set:        HashSet::new(),
             app_remove_mode:      false,
             loading_tick:         0,
+            installed_auto_loaded: false,
             run_external:          Vec::new(),
             run_external_removing: false,
+            show_help:             false,
+            mouse_tabs:            Rect::default(),
+            mouse_sidebar:         Rect::default(),
+            mouse_body:            Rect::default(),
+            body_list_offset:      0,
         }
     }
 

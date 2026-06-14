@@ -4,30 +4,43 @@ use ratatui::{
     prelude::Color,
     layout::Rect,
     Frame,
-    widgets::{Block, Tabs}
+    widgets::{Block, Borders, BorderType, Tabs}
 };
 use crate::models::TabModel;
 
 pub fn render_tab(frame: &mut Frame, area: Rect, active: TabModel) {
     let titles: Vec<Line> = TabModel::ALL.iter()
-        .map(|t| Line::from(Span::raw(t.title())))
+        .map(|t| {
+            let label = match t {
+                TabModel::Home        => "  ~ Home  ",
+                TabModel::Application => "  # Apps  ",
+            };
+            Line::from(label)
+        })
         .collect();
 
     let selected = TabModel::ALL.iter()
         .position(|t| *t == active).unwrap_or(0);
 
     let tabs = Tabs::new(titles)
-        .block(Block::bordered().title(" Navigation "))
-        // .block(Block::default()
-        //     .borders(Borders::TOP | Borders::LEFT | Borders::RIGHT)
-        //     .title(" Navigation "))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(Color::DarkGray))
+                .title(Span::styled(
+                    "  dotfile-rs  ",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                )),
+        )
         .select(selected)
         .highlight_style(
             Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+                .add_modifier(Modifier::UNDERLINED),
         )
-        .divider("│");
+        .divider(Span::styled("│", Style::default().fg(Color::DarkGray)));
 
     frame.render_widget(tabs, area);
 }

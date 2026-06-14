@@ -17,7 +17,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::{
     collections::HashSet,
@@ -26,7 +26,7 @@ use std::{
     sync::{Arc, Mutex, mpsc},
     thread,
 };
-use crate::models::PackageManager;
+use crate::models::{AppEntry, PackageManager};
 use crate::utils::{decode_winget_output, is_noise_line, sanitize_line, strip_ansi};
 
 pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
@@ -45,8 +45,6 @@ pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
             app.apps.as_ref().map(|a| a.len()).unwrap_or(0)
         );
     }
-
-    let apps = app.apps.as_ref().unwrap();
 
     let body_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -88,26 +86,31 @@ pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
         app.installed_rx = None;
     }
 
-    render_sidebar(frame, sidebar, apps, app);
-
-    match app.app_focus {
-        AppFocus::Search    => render_search_panel(frame, body_chunks[0], app),
-        AppFocus::Installed => render_installed_panel(frame, body_chunks[0], app),
-        _                   => render_app_list(frame, body_chunks[0], apps, app),
+    // Auto-load installed packages in the background so the apps list can
+    // show [I] markers without the user having to open the installed view first.
+    if !app.installed_auto_loaded && !app.installed_loading {
+        app.installed_auto_loaded = true;
+        run_list_installed(app);
+        tracing::info!("[app_render] triggered background installed-list load");
     }
 
-    render_custom_input(frame, body_chunks[1], app);
+    let body_list_offset = {
+        let apps = app.apps.as_ref().unwrap();
+        render_sidebar(frame, sidebar, apps, app);
+        let offset = match app.app_focus {
+            AppFocus::Search    => render_search_panel(frame, body_chunks[0], app),
+            AppFocus::Installed => render_installed_panel(frame, body_chunks[0], app),
+            _                   => render_app_list(frame, body_chunks[0], apps, app),
+        };
+        render_custom_input(frame, body_chunks[1], app);
+        offset
+        // `apps` borrow released here
+    };
+    app.body_list_offset = body_list_offset;
 
-    // in app_render(), after render_app_list / render_search_panel:
     if app.app_focus == AppFocus::PmPicker {
         render_pm_picker(frame, app);
     } else if app.app_sudo_pending {
-        render_sudo_confirmation(frame, app);
-    } else if app.app_installing {
-        render_install_modal(frame, app);
-    }
-
-    if app.app_sudo_pending {
         tracing::debug!("[app_render] rendering sudo confirmation modal");
         render_sudo_confirmation(frame, app);
     } else if app.app_installing {
@@ -120,91 +123,72 @@ pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
 }
 
 fn render_pm_picker(frame: &mut Frame, app: &App) {
-    let area = centered_rect(40, 50, frame.area());
+    let area = centered_rect(44, 60, frame.area());
     frame.render_widget(Clear, area);
+
+    let inner_w = area.width.saturating_sub(2) as usize;
 
     let items: Vec<ListItem> = app
         .package_managers
         .iter()
         .enumerate()
         .map(|(i, pm)| {
-            let is_cursor   = i == app.pm_picker_selected;
-            let is_active   = i == app.selected_pm;
+            let is_cursor = i == app.pm_picker_selected;
+            let is_active = i == app.selected_pm;
 
-            let label = if is_active {
-                format!("▶ {:8}  {} (active)", pm.binary(), pm_description(pm))
-            } else {
-                format!("  {:8}  {}", pm.binary(), pm_description(pm))
-            };
+            let active_tag = if is_active { " ●" } else { "  " };
+            let text = format!("{} {:10} {}", active_tag, pm.binary(), pm_description(pm));
+            let padded = format!("{:<width$}", text, width = inner_w);
 
             let style = match (is_cursor, is_active) {
                 (true, true)  => Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD),
                 (true, false) => Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
                 (_, true)     => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-                _             => Style::default().fg(Color::White),
+                _             => Style::default().fg(Color::DarkGray),
             };
 
-            ListItem::new(Line::from(Span::styled(label, style)))
+            ListItem::new(Line::from(Span::styled(padded, style)))
         })
         .collect();
 
     let mut list_state = ListState::default();
     list_state.select(Some(app.pm_picker_selected));
 
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Select Package Manager ")
-                .border_style(Style::default().fg(Color::Cyan)),
-        )
-        .highlight_symbol("");
-
-    frame.render_stateful_widget(list, area, &mut list_state);
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(panel("⚙ Package Manager", true))
+            .highlight_symbol(""),
+        area,
+        &mut list_state,
+    );
 }
 
 fn render_sidebar(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) {
-    let focused = app.app_focus == AppFocus::Section;
+    let focused  = app.app_focus == AppFocus::Section;
+    let inner_w  = area.width.saturating_sub(2) as usize;
 
     let items: Vec<ListItem> = apps
         .iter()
         .enumerate()
         .map(|(i, section)| {
-            let selected = i == app.app_selected_section;
-            let style = match (selected, focused) {
-                (true, true) => Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-                (true, false) => Style::default().fg(Color::Yellow),
-                _ => Style::default().fg(Color::DarkGray),
+            let is_cur = i == app.app_selected_section;
+            let style = match (is_cur, focused) {
+                (true, true)  => Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                (true, false) => Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                _             => Style::default().fg(Color::DarkGray),
             };
-            let prefix = if selected && focused { "▶ " } else { "  " };
-            ListItem::new(Line::from(Span::styled(
-                format!("{}{}", prefix, section.section),
-                style,
-            )))
+            let prefix = if is_cur && focused { "▶ " } else { "  " };
+            let text   = format!("{}{}", prefix, section.section);
+            let padded = format!("{:<width$}", text, width = inner_w);
+            ListItem::new(Line::from(Span::styled(padded, style)))
         })
         .collect();
 
-    let border_style = if focused {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-
-    let title = format!("Sections [{}]", app.active_package_manager());
-
-    let list = List::new(items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title)
-            .border_style(border_style),
-    );
-
-    frame.render_widget(list, area);
+    let title = format!("≡ Sections [{}]", app.active_package_manager());
+    frame.render_widget(List::new(items).block(panel(&title, focused)), area);
 }
 
-fn render_app_list(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) {
+fn render_app_list(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) -> usize {
     let focused = app.app_focus == AppFocus::Apps;
 
     let Some(section) = apps.get(app.app_selected_section) else {
@@ -213,37 +197,40 @@ fn render_app_list(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) {
             app.app_selected_section
         );
         frame.render_widget(
-            Paragraph::new("No section selected").block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(format!("Applications ({})", app.active_package_manager())),
-            ),
+            Paragraph::new("\n  No section selected.")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(panel(&format!("≡ Apps [{}]", app.active_package_manager()), false)),
             area,
         );
-        return;
+        return 0;
     };
 
     let inner_w = area.width.saturating_sub(2) as usize;
+
+    let mgr = app.active_package_manager();
 
     let items: Vec<ListItem> = section
         .apps
         .iter()
         .enumerate()
         .map(|(i, entry)| {
-            let is_cursor   = focused && i == app.app_selected_app;
-            let is_selected = app.app_selected_ids.contains(&entry.id);
+            let is_cursor    = focused && i == app.app_selected_app;
+            let is_selected  = app.app_selected_ids.contains(&entry.id);
+            let is_installed = entry_installed(entry, mgr, &app.installed_set);
 
-            let checkbox = if is_selected { "[✓]" } else { "[ ]" };
-            let arrow    = if is_cursor   { "▶ " }  else { "  " };
+            let checkbox = if is_selected  { "[✓]" }
+                           else if is_installed { "[I]" }
+                           else { "[ ]" };
+            let arrow = if is_cursor { "▶ " } else { "  " };
 
-            let style = match (is_cursor, is_selected) {
-                (true, true)  => Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD),
-                (true, false) => Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
-                (false, true) => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
-                (false, false) => Style::default().fg(Color::DarkGray),
+            let style = match (is_cursor, is_selected, is_installed) {
+                (true, true, _)   => Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD),
+                (true, _, _)      => Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
+                (_, true, _)      => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                (_, _, true)      => Style::default().fg(Color::Green),
+                _                 => Style::default().fg(Color::DarkGray),
             };
 
-            // Pad to inner_w so the background fills the full row width
             let prefix     = format!("{}{} ", arrow, checkbox);
             let prefix_len = prefix.chars().count();
             let name_w     = inner_w.saturating_sub(prefix_len);
@@ -253,33 +240,19 @@ fn render_app_list(frame: &mut Frame, area: Rect, apps: &Apps, app: &App) {
         })
         .collect();
 
-    let selected_count = app.app_selected_ids.len();
-    let title = format!(
-        "Apps — {} ({} selected) [{}]",
-        section.section,
-        selected_count,
-        app.active_package_manager(),
-    );
-
-    let border_style = if focused {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
+    let n_sel  = app.app_selected_ids.len();
+    let sel_badge = if n_sel > 0 { format!("  ✓ {}  ", n_sel) } else { String::new() };
+    let title  = format!("≡ {} — {}{}", section.section, app.active_package_manager(), sel_badge);
 
     let mut list_state = ListState::default();
     list_state.select(Some(app.app_selected_app));
 
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(border_style),
-        )
-        .highlight_symbol(""); // we draw our own arrow, so disable ratatui's
-
-    frame.render_stateful_widget(list, area, &mut list_state);
+    frame.render_stateful_widget(
+        List::new(items).block(panel(&title, focused)).highlight_symbol(""),
+        area,
+        &mut list_state,
+    );
+    list_state.offset()
 }
 
 // ─── Search panel (winget only) ──────────────────────────────────────────────
@@ -290,7 +263,36 @@ fn spinner(tick: u8) -> &'static str {
     SPINNER[tick as usize % SPINNER.len()]
 }
 
-fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
+/// Returns true if the entry's resolved package name is in the installed set.
+fn entry_installed(entry: &AppEntry, mgr: &str, installed_set: &HashSet<String>) -> bool {
+    let os = if cfg!(target_os = "windows") { "windows" }
+             else if cfg!(target_os = "macos")   { "macos" }
+             else { "linux" };
+    // Use the exact package name the manager would install/list.
+    entry.platforms
+        .get(os)
+        .and_then(|p| p.get(mgr))
+        .map(|pkg| installed_set.contains(pkg.as_str()))
+        // Fallback: match by entry id (e.g. for winget IDs).
+        .unwrap_or_else(|| installed_set.contains(entry.id.as_str()))
+}
+
+/// Rounded panel block with a consistent title style.
+fn panel(title: &str, focused: bool) -> Block<'static> {
+    let border_color = if focused { Color::Cyan } else { Color::DarkGray };
+    Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(border_color))
+        .title(Span::styled(
+            format!(" {} ", title),
+            Style::default()
+                .fg(if focused { Color::Cyan } else { Color::DarkGray })
+                .add_modifier(Modifier::BOLD),
+        ))
+}
+
+fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) -> usize {
     let mgr  = app.active_package_manager();
     let spin = spinner(app.loading_tick);
 
@@ -303,44 +305,36 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     if app.search_loading {
-        let loading = Paragraph::new(vec![
-            Line::from(""),
-            Line::from(Span::styled(
-                format!("  {} Searching, please wait…", spin),
-                Style::default().fg(Color::Yellow),
-            )),
-        ])
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::Yellow)),
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    format!("  {} Searching, please wait…", spin),
+                    Style::default().fg(Color::Yellow),
+                )),
+            ])
+            .block(panel(&title, true)
+                .border_style(Style::default().fg(Color::Yellow))),
+            area,
         );
-        frame.render_widget(loading, area);
-        return;
+        return 0;
     }
 
     if app.search_results.is_empty() {
-        let empty_msg = if app.search_query.is_empty() {
-            "  Type a query in the input below and press Enter to search."
+        let msg = if app.search_query.is_empty() {
+            "  Type a query below and press Enter to search."
         } else {
-            "  No results found. Try a different query."
+            "  No results found — try a different query."
         };
-        let empty = Paragraph::new(vec![
-            Line::from(""),
-            Line::from(Span::styled(
-                empty_msg,
-                Style::default().fg(Color::DarkGray),
-            )),
-        ])
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::DarkGray)),
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(""),
+                Line::from(Span::styled(msg, Style::default().fg(Color::DarkGray))),
+            ])
+            .block(panel(&title, false)),
+            area,
         );
-        frame.render_widget(empty, area);
-        return;
+        return 0;
     }
 
     // prefix = arrow(2) + checkbox(3) + space(1) = 6 chars
@@ -405,62 +399,52 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) {
     let mut list_state = ListState::default();
     list_state.select(Some(app.search_selected));
 
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::Cyan)),
-        )
-        .highlight_symbol("");
-
-    frame.render_stateful_widget(list, area, &mut list_state);
+    frame.render_stateful_widget(
+        List::new(items).block(panel(&title, true)).highlight_symbol(""),
+        area,
+        &mut list_state,
+    );
+    list_state.offset()
 }
 
-fn render_installed_panel(frame: &mut Frame, area: Rect, app: &App) {
+fn render_installed_panel(frame: &mut Frame, area: Rect, app: &App) -> usize {
     let mgr  = app.active_package_manager();
     let spin = spinner(app.loading_tick);
 
     let title = if app.installed_loading {
         format!(" {} Installed [{}] — loading… ", spin, mgr)
     } else {
-        format!(" Installed [{}] — {} package(s)  [Space] select  [d] remove  [r] refresh ", mgr, app.installed_packages.len())
+        format!(" Installed [{}] — {} package(s) ", mgr, app.installed_packages.len())
     };
 
     if app.installed_loading {
-        let loading = Paragraph::new(vec![
-            Line::from(""),
-            Line::from(Span::styled(
-                format!("  {} Loading installed packages…", spin),
-                Style::default().fg(Color::Yellow),
-            )),
-        ])
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::Yellow)),
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    format!("  {} Loading installed packages…", spin),
+                    Style::default().fg(Color::Yellow),
+                )),
+            ])
+            .block(panel(&title, true).border_style(Style::default().fg(Color::Yellow))),
+            area,
         );
-        frame.render_widget(loading, area);
-        return;
+        return 0;
     }
 
     if app.installed_packages.is_empty() {
-        let empty = Paragraph::new(vec![
-            Line::from(""),
-            Line::from(Span::styled(
-                "  No installed packages found. Press [r] to refresh.",
-                Style::default().fg(Color::DarkGray),
-            )),
-        ])
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::DarkGray)),
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(""),
+                Line::from(Span::styled(
+                    "  No installed packages found.  Press r to refresh.",
+                    Style::default().fg(Color::DarkGray),
+                )),
+            ])
+            .block(panel(&title, false)),
+            area,
         );
-        frame.render_widget(empty, area);
-        return;
+        return 0;
     }
 
     let inner_w = area.width.saturating_sub(2) as usize;
@@ -500,16 +484,14 @@ fn render_installed_panel(frame: &mut Frame, area: Rect, app: &App) {
     let mut list_state = ListState::default();
     list_state.select(Some(app.installed_selected));
 
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title)
-                .border_style(Style::default().fg(Color::Red)),
-        )
-        .highlight_symbol("");
-
-    frame.render_stateful_widget(list, area, &mut list_state);
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(panel(&title, true))
+            .highlight_symbol(""),
+        area,
+        &mut list_state,
+    );
+    list_state.offset()
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -527,54 +509,53 @@ fn truncate(s: &str, max: usize) -> String {
 }
 
 fn render_custom_input(frame: &mut Frame, area: Rect, app: &App) {
-    let focused = app.app_focus == AppFocus::CustomInput || app.app_focus == AppFocus::Search;
+    let in_search = app.app_focus == AppFocus::Search;
+    let focused   = app.app_focus == AppFocus::CustomInput || in_search;
 
-    let border_style = if focused {
-        Style::default().fg(Color::Magenta)
-    } else {
-        Style::default().fg(Color::DarkGray)
-    };
-
-    let mgr = app.active_package_manager();
-    // let is_winget = mgr == "winget";
-
-    let (title, content) = if app.app_focus == AppFocus::Search {
-        // Search mode (winget): show the search query buffer
+    let (title, content, accent) = if in_search {
         let buf = &app.search_query;
         let display = if buf.is_empty() {
-            Span::styled("▌", Style::default().fg(Color::Magenta))
+            Span::styled("▌", Style::default().fg(Color::Cyan))
         } else {
             Span::styled(format!("{}▌", buf), Style::default().fg(Color::White))
         };
-        (" Search (Enter to run, Esc to cancel) [i]", display)
+        let search_title = if !buf.is_empty() && !app.search_loading {
+            "⌕ Search  ↵ to search"
+        } else {
+            "⌕ Search"
+        };
+        (search_title, display, Color::Cyan)
     } else if focused {
-        // CustomInput mode (Linux): plain name entry
         let buf = &app.app_custom_input;
         let display = if buf.is_empty() {
-            Span::styled("▌", Style::default().fg(Color::Magenta))
+            Span::styled("▌", Style::default().fg(Color::Cyan))
         } else {
             Span::styled(format!("{}▌", buf), Style::default().fg(Color::White))
         };
-        (" Custom Package [i]", display)
+        ("⌕ Custom package", display, Color::Cyan)
     } else {
-        // Idle hint — differs by manager
         let hint = search_hint(app.active_package_manager());
         let display = Span::styled(hint.to_string(), Style::default().fg(Color::DarkGray));
-        (" Search / Custom [i]", display)
+        ("⌕ Search / Custom", display, Color::DarkGray)
     };
 
-    let input = Paragraph::new(Line::from(content)).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title)
-            .border_style(border_style),
+    frame.render_widget(
+        Paragraph::new(Line::from(content)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(accent))
+                .title(Span::styled(
+                    format!(" {} ", title),
+                    Style::default().fg(accent).add_modifier(Modifier::BOLD),
+                )),
+        ),
+        area,
     );
-
-    frame.render_widget(input, area);
 }
 
 fn render_install_modal(frame: &mut Frame, app: &App) {
-    let area = centered_rect(70, 70, frame.area());
+    let area = centered_rect(72, 72, frame.area());
     frame.render_widget(Clear, area);
 
     let chunks = Layout::default()
@@ -593,9 +574,7 @@ fn render_install_modal(frame: &mut Frame, app: &App) {
             } else if l.starts_with("▶") {
                 Style::default().fg(Color::Cyan)
             } else if l.starts_with("═") {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -605,56 +584,28 @@ fn render_install_modal(frame: &mut Frame, app: &App) {
 
     let scroll_offset = (log_text.len() as u16).saturating_sub(chunks[0].height.saturating_sub(2));
 
-    let log = Paragraph::new(log_text)
-        .scroll((scroll_offset, 0))
-        .wrap(Wrap { trim: false })
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Installing... ")
-                .border_style(Style::default().fg(Color::Yellow)),
-        );
-
-    frame.render_widget(log, chunks[0]);
-
-    let input_display = if app.install_input.is_empty() {
-        Span::styled("▌", Style::default().fg(Color::DarkGray))
-    } else {
-        Span::styled(
-            format!("{}▌", app.install_input),
-            Style::default().fg(Color::White),
-        )
-    };
-
-    let input_box = Paragraph::new(Line::from(input_display)).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Response (y/n/Enter) ")
-            .border_style(Style::default().fg(Color::Cyan)),
+    frame.render_widget(
+        Paragraph::new(log_text)
+            .scroll((scroll_offset, 0))
+            .wrap(Wrap { trim: false })
+            .block(panel("⬇ Installing", true).border_style(Style::default().fg(Color::Yellow))),
+        chunks[0],
     );
 
-    frame.render_widget(input_box, chunks[1]);
+    let cursor = if app.install_input.is_empty() {
+        Span::styled("▌", Style::default().fg(Color::DarkGray))
+    } else {
+        Span::styled(format!("{}▌", app.install_input), Style::default().fg(Color::White))
+    };
+
+    frame.render_widget(
+        Paragraph::new(Line::from(cursor))
+            .block(panel("Response  y / n / Enter", true)),
+        chunks[1],
+    );
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
+use super::super::centered_rect;
 
 // ─── Key handler ─────────────────────────────────────────────────────────────
 
@@ -697,10 +648,11 @@ fn handle_pm_picker_keys(app: &mut App, key: KeyEvent) {
                 app.search_rx             = None;
                 app.installed_packages.clear();
                 app.installed_set.clear();
-                app.installed_loading     = false;
-                app.installed_rx          = None;
-                app.installed_selected    = 0;
-                app.app_remove_mode       = false;
+                app.installed_loading      = false;
+                app.installed_rx           = None;
+                app.installed_selected     = 0;
+                app.app_remove_mode        = false;
+                app.installed_auto_loaded  = false;
                 tracing::info!(
                     "[pm_picker] switched to manager={}",
                     app.active_package_manager()
@@ -1858,49 +1810,74 @@ fn execute_install(app: &mut App, use_sudo: bool) {
     });
 }
 
+fn selected_display_names(app: &App) -> Vec<String> {
+    app.app_selected_ids
+        .iter()
+        .map(|id| {
+            if let Some(apps) = &app.apps {
+                for section in apps {
+                    if let Some(entry) = section.apps.iter().find(|e| &e.id == id) {
+                        return entry.name.clone();
+                    }
+                }
+            }
+            id.clone()
+        })
+        .collect()
+}
+
 fn render_sudo_confirmation(frame: &mut Frame, app: &App) {
-    let area = centered_rect(50, 30, frame.area());
+    let area = centered_rect(56, 50, frame.area());
     frame.render_widget(Clear, area);
 
-    let mgr = app.active_package_manager();
-    let count = app.app_selected_ids.len();
+    let mgr   = app.active_package_manager();
+    let names = selected_display_names(app);
+    let count = names.len();
 
-    let text = vec![
+    const MAX_SHOWN: usize = 10;
+    let overflow = count.saturating_sub(MAX_SHOWN);
+
+    let mut text = vec![
         Line::from(""),
         Line::from(Span::styled(
-            format!("  {} requires sudo to install packages.", mgr),
-            Style::default().fg(Color::Yellow),
+            format!("  ⚠  {} requires sudo to continue.", mgr),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
         Line::from(Span::styled(
-            format!("  {} app(s) selected.", count),
-            Style::default().fg(Color::White),
+            format!("  {} package(s) selected:", count),
+            Style::default().fg(Color::DarkGray),
         )),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(
-                "  [y] ",
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("Run with sudo    ", Style::default().fg(Color::White)),
-            Span::styled(
-                "[n] ",
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("Cancel", Style::default().fg(Color::White)),
-        ]),
     ];
 
-    let modal = Paragraph::new(text).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Sudo Required ")
-            .border_style(Style::default().fg(Color::Yellow)),
-    );
+    for name in names.iter().take(MAX_SHOWN) {
+        text.push(Line::from(Span::styled(
+            format!("    • {}", name),
+            Style::default().fg(Color::White),
+        )));
+    }
 
-    frame.render_widget(modal, area);
+    if overflow > 0 {
+        text.push(Line::from(Span::styled(
+            format!("    … and {} more", overflow),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    text.push(Line::from(""));
+    text.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(" y ", Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD)),
+        Span::styled("  Run with sudo      ", Style::default().fg(Color::White)),
+        Span::styled(" n ", Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD)),
+        Span::styled("  Cancel", Style::default().fg(Color::White)),
+    ]));
+
+    frame.render_widget(
+        Paragraph::new(text)
+            .block(panel("⚠ Sudo Required", true).border_style(Style::default().fg(Color::Yellow))),
+        area,
+    );
 }
 
 // helper:

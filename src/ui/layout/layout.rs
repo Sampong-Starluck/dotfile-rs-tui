@@ -8,7 +8,7 @@ pub fn default_layout(frame: &mut Frame) -> AppArea {
         .constraints([
             Constraint::Length(3),  // tab bar
             Constraint::Fill(1),    // main content
-            Constraint::Length(1),  // status bar
+            Constraint::Length(2),  // status bar (separator + hints)
         ])
         .split(frame.area());
 
