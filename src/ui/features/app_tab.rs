@@ -27,7 +27,7 @@ use std::{
     thread,
 };
 use crate::models::{AppEntry, PackageManager};
-use crate::utils::{decode_winget_output, is_noise_line, sanitize_line, strip_ansi};
+use crate::utils::{is_noise_line, sanitize_line, strip_ansi};
 
 pub fn app_render(frame: &mut Frame, sidebar: Rect, body: Rect, app: &mut App) {
     if app.apps.is_none() {
@@ -359,7 +359,7 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) -> usize {
             let arrow    = if is_cursor { "▶ " } else { "  " };
 
             let id   = truncate(&result.id,      id_w);
-            let name = truncate(&result.name,    name_w);
+            // let name = truncate(&result.name,    name_w);
             let ver  = truncate(&result.version, ver_w);
 
             let bg = if is_cursor && is_picked { Color::Green }
@@ -512,7 +512,11 @@ fn render_custom_input(frame: &mut Frame, area: Rect, app: &App) {
     let in_search = app.app_focus == AppFocus::Search;
     let focused   = app.app_focus == AppFocus::CustomInput || in_search;
 
-    let (title, content, accent) = if in_search {
+    // let mgr = app.active_package_manager();
+    // let is_winget = mgr == "winget";
+
+    let (title, content) = if app.app_focus == AppFocus::Search {
+        // Search mode (winget): show the search query buffer
         let buf = &app.search_query;
         let display = if buf.is_empty() {
             Span::styled("▌", Style::default().fg(Color::Cyan))
@@ -832,7 +836,7 @@ fn drain_stdout_to_log(
         return true;
     }
     let text = String::from_utf8_lossy(&raw);
-    for segment in text.split(|c| c == '\r' || c == '\n') {
+    for segment in text.split(['\r', '\n']) {
         let clean = strip_ansi(segment);
         if is_noise_line(&clean) {
             tracing::debug!("[{}:stdout] (noise) {:?}", tag, clean);
