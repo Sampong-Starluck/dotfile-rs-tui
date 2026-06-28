@@ -32,6 +32,7 @@ pub fn render(app: &mut App, frame: &mut Frame) {
     match app.active_tab {
         TabModel::Home        => features::home_render(frame, area.sidebar, area.body, app),
         TabModel::Application => features::app_render(frame, area.sidebar, area.body, app),
+        TabModel::Script      => features::script_render(frame, area.sidebar, area.body, app),
     }
 
     render_status(frame, area.status, app);
@@ -146,6 +147,15 @@ pub(crate) fn bindings_for(tab: TabModel, focus: AppFocus) -> Vec<(&'static str,
             ("Tab", "switch tab"),
             ("q", "quit"),
             ("?", "help"),
+        ],
+        TabModel::Script => vec![
+            ("↑↓", "navigate"),
+            ("Enter", "deploy"),
+            ("d", "remove"),
+            ("p", "set primary"),
+            ("c", "clear primary"),
+            ("r", "refresh"),
+            ("q", "quit"),
         ],
     }
 }

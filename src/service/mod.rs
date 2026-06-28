@@ -2,6 +2,7 @@ pub mod app_service;
 pub mod install_service;
 pub mod search_service;
 pub mod system_service;
+pub mod script_service;
 
 pub use app_service::{read_apps_json, filter_apps_by_platform};
 pub use install_service::{install_command, get_install_command, remove_command};

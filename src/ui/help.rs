@@ -55,6 +55,14 @@ pub fn render_help(frame: &mut Frame, app: &App) {
                 lines.push(Line::from(""));
             }
         }
+        TabModel::Script => {
+            lines.push(section_header("Scripts"));
+            for (k, d) in bindings_for(TabModel::Script, AppFocus::Section) {
+                if !matches!(k, "q" | "?") {
+                    lines.push(binding_row(k, d));
+                }
+            }
+        }
     }
 
     frame.render_widget(

@@ -7,7 +7,7 @@ use ratatui::layout::Rect;
 use crate::{
     enumerate::AppFocus,
     models::{Apps, OperatingSystem, PackageManager, TabModel},
-    service::SearchResult,
+    service::{SearchResult, script_service::ShellStatus},
 };
 
 pub struct App {
@@ -69,6 +69,14 @@ pub struct App {
     pub mouse_body:    Rect,
     // Scroll offsets of the active body list — updated every render frame
     pub body_list_offset: usize,
+
+    // script tab
+    pub script_selected:     usize,
+    pub script_log:          Vec<String>,
+    pub script_shells:       Option<Vec<ShellStatus>>,
+    /// Effective primary shell id (explicit config or system default).
+    /// Populated when script_shells is first loaded.
+    pub script_primary_shell: Option<String>,
 }
 
 impl App {
@@ -121,6 +129,10 @@ impl App {
             mouse_sidebar:         Rect::default(),
             mouse_body:            Rect::default(),
             body_list_offset:      0,
+            script_selected:       0,
+            script_log:            Vec::new(),
+            script_shells:         None,
+            script_primary_shell:  None,
         }
     }
 

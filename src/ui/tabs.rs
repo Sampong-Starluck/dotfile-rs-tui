@@ -14,6 +14,7 @@ pub fn render_tab(frame: &mut Frame, area: Rect, active: TabModel) {
             let label = match t {
                 TabModel::Home        => "  ~ Home  ",
                 TabModel::Application => "  # Apps  ",
+                TabModel::Script      => "  $ Scripts  ",
             };
             Line::from(label)
         })
