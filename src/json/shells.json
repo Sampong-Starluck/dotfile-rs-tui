@@ -1,19 +1,12 @@
 {
   "shells": [
     {
-      "id": "all",
-      "name": "All Shells",
-      "hidden": false,
-      "function": "",
-      "description": "Configure all available shells",
-      "order": 0
-    },
-    {
       "id": "powershell",
       "name": "PowerShell 7",
       "hidden": false,
       "function": "Set-Posh",
       "description": "Configure PowerShell profile and modules",
+      "platforms": ["windows", "linux", "macos"],
       "order": 1,
       "requires": ["oh-my-posh"]
     },
@@ -23,6 +16,7 @@
       "hidden": false,
       "function": "Set-Nu",
       "description": "Configure NuShell environment",
+      "platforms": ["windows", "linux", "macos"],
       "order": 2,
       "requires": ["oh-my-posh"]
     },
@@ -32,17 +26,28 @@
       "hidden": false,
       "function": "Set-Bash",
       "description": "Configure Bash profile and aliases",
+      "platforms": ["linux", "macos"],
       "order": 3
+    },
+    {
+      "id": "zsh",
+      "name": "Zsh",
+      "hidden": false,
+      "function": "Set-Zsh",
+      "description": "Configure Zsh profile and aliases",
+      "platforms": ["linux", "macos"],
+      "order": 4
     },
     {
       "id": "fish",
       "name": "Fish Shell",
-      "hidden": true,
+      "hidden": false,
       "function": "Set-Fish",
-      "description": "Configure Fish shell (experimental)",
-      "order": 99
+      "description": "Configure Fish shell environment",
+      "platforms": ["linux", "macos"],
+      "order": 5
     }
   ],
-  "version": "1.0.0",
+  "version": "1.1.0",
   "lastUpdated": "2025-08-23"
 }

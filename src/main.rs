@@ -138,6 +138,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>) -> color_eyre
                     _ => match app.active_tab {
                         TabModel::Home        => ui::features::home_handle_key(&mut app, key),
                         TabModel::Application => ui::features::app_handle_key(&mut app, key),
+                        TabModel::Script      => ui::features::script_handle_key(&mut app, key),
                     }
                 }
             }

@@ -37,14 +37,18 @@ fn click(app: &mut App, col: u16, row: u16) {
 
 fn tab_click(app: &mut App, col: u16) {
     // Tab bar inner content starts after the left border (x + 1).
-    // Titles: "  ~ Home  " (10 chars) | "│" | "  # Apps  " (10 chars)
+    // Titles:  "  ~ Home  " (10) │ "  # Apps  " (10) │ "  $ Scripts  " (13)
     let inner = col.saturating_sub(app.mouse_tabs.x + 1) as usize;
     let new_tab = if inner < 10 {
         TabModel::Home
-    } else if inner >= 11 {
-        TabModel::Application
-    } else {
+    } else if inner == 10 {
         return; // divider
+    } else if inner < 21 {
+        TabModel::Application
+    } else if inner == 21 {
+        return; // divider
+    } else {
+        TabModel::Script
     };
     if new_tab != app.active_tab {
         app.active_tab = new_tab;
@@ -80,6 +84,12 @@ fn sidebar_click(app: &mut App, row: u16) {
                 }
             }
         }
+        TabModel::Script => {
+            let count = app.script_shells.as_ref().map(|s| s.len()).unwrap_or(0);
+            if idx < count {
+                app.script_selected = idx;
+            }
+        }
     }
 }
 
@@ -112,8 +122,8 @@ fn body_click(app: &mut App, row: u16) {
             }
             _ => {}
         },
-        TabModel::Home => {
-            // Body is command table — no clickable items.
+        TabModel::Home | TabModel::Script => {
+            // Body panels have no clickable items.
         }
     }
 }
@@ -131,6 +141,7 @@ fn scroll(app: &mut App, col: u16, row: u16, delta: i8) {
         match app.active_tab {
             TabModel::Home        => home_scroll(app, delta),
             TabModel::Application => body_scroll(app, delta),
+            TabModel::Script      => sidebar_scroll(app, delta),
         }
     }
 }
@@ -155,6 +166,14 @@ fn sidebar_scroll(app: &mut App, delta: i8) {
                 app.app_selected_section = app.app_selected_section.saturating_sub(1);
             }
             app.app_selected_app = 0;
+        }
+        TabModel::Script => {
+            let max = app.script_shells.as_ref().map(|s| s.len()).unwrap_or(0).saturating_sub(1);
+            if delta > 0 {
+                app.script_selected = (app.script_selected + 1).min(max);
+            } else {
+                app.script_selected = app.script_selected.saturating_sub(1);
+            }
         }
     }
 }
@@ -194,7 +213,7 @@ fn body_scroll(app: &mut App, delta: i8) {
             }
             _ => {}
         },
-        TabModel::Home => home_scroll(app, delta),
+        TabModel::Home | TabModel::Script => home_scroll(app, delta),
     }
 }
 
