@@ -1,15 +1,15 @@
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
+use nanoserde::{DeJson, SerJson};
 
 pub type Apps = Vec<AppSection>;
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, DeJson, SerJson, Debug)]
 pub struct AppSection {
     pub section: String,
     pub apps: Vec<AppEntry>,
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, DeJson, SerJson, Debug)]
 pub struct AppEntry {
     pub name: String,
     pub id: String,

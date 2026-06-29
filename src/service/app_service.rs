@@ -1,8 +1,10 @@
+use nanoserde::DeJson;
 use crate::models::{AppEntry, AppSection, Apps};
 
 pub fn read_apps_json() -> Result<Apps, Box<dyn std::error::Error>> {
     const APPS_JSON: &str = include_str!("../json/apps.json");
-    let apps: Apps = serde_json::from_str(APPS_JSON)?;
+    let apps: Apps = DeJson::deserialize_json(APPS_JSON)
+        .map_err(|e| -> Box<dyn std::error::Error> { e.to_string().into() })?;
     Ok(apps)
 }
 

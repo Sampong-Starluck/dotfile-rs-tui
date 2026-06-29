@@ -359,7 +359,7 @@ fn render_search_panel(frame: &mut Frame, area: Rect, app: &App) -> usize {
             let arrow    = if is_cursor { "▶ " } else { "  " };
 
             let id   = truncate(&result.id,      id_w);
-            // let name = truncate(&result.name,    name_w);
+            let name = truncate(&result.name,    name_w);
             let ver  = truncate(&result.version, ver_w);
 
             let bg = if is_cursor && is_picked { Color::Green }
@@ -515,7 +515,7 @@ fn render_custom_input(frame: &mut Frame, area: Rect, app: &App) {
     // let mgr = app.active_package_manager();
     // let is_winget = mgr == "winget";
 
-    let (title, content) = if app.app_focus == AppFocus::Search {
+    let (title, content, accent) = if app.app_focus == AppFocus::Search {
         // Search mode (winget): show the search query buffer
         let buf = &app.search_query;
         let display = if buf.is_empty() {

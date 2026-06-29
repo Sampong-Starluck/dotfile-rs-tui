@@ -1,5 +1,5 @@
 use std::{io::Write, path::PathBuf};
-use serde::{Deserialize, Serialize};
+use nanoserde::{DeJson, SerJson};
 use crate::models::{ShellConfig, ShellEntry};
 
 const SHELLS_JSON:  &str = include_str!("../json/shells.json");
@@ -32,7 +32,7 @@ pub fn load_shell_statuses() -> Vec<ShellStatus> {
 }
 
 pub fn read_shells() -> Vec<ShellEntry> {
-    let config: ShellConfig = serde_json::from_str(SHELLS_JSON)
+    let config: ShellConfig = DeJson::deserialize_json(SHELLS_JSON)
         .unwrap_or(ShellConfig { shells: vec![] });
     let mut shells: Vec<ShellEntry> = config.shells
         .into_iter()
@@ -305,7 +305,7 @@ pub fn remove_source_from_profile(shell_id: &str) -> Result<(bool, PathBuf), Str
 
 // ── Primary shell config ──────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, SerJson, DeJson, Default)]
 pub struct DotfileConfig {
     pub primary_shell: Option<String>,
 }
@@ -321,7 +321,7 @@ pub fn read_config() -> DotfileConfig {
     }
     std::fs::read_to_string(&path)
         .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
+        .and_then(|s| DeJson::deserialize_json(&s).ok())
         .unwrap_or_default()
 }
 
@@ -331,8 +331,7 @@ pub fn write_config(cfg: &DotfileConfig) -> Result<(), String> {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("create config dir: {}", e))?;
     }
-    let json = serde_json::to_string_pretty(cfg)
-        .map_err(|e| format!("serialize config: {}", e))?;
+    let json = cfg.serialize_json();
     std::fs::write(&path, json)
         .map_err(|e| format!("write config: {}", e))
 }
