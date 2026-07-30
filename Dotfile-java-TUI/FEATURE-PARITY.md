@@ -24,13 +24,13 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 
 | Rust source | Java target | Done |
 |---|---|---|
-| `src/models/os.rs` (types) | `model/OperatingSystem`, `model/LinuxDistro` | ☐ |
-| `src/models/package_manager.rs` (binary/label/commands data) | `model/PackageManager`, `model/PmCommand` | ☐ |
-| `src/models/apps.rs` | `model/AppSection`, `model/AppEntry` | ☐ |
-| `src/models/shell.rs` + `shell_model.rs` | `model/ShellEntry`, `model/ShellsFile` | ☐ |
-| `SearchResult`, `ShellStatus`, `DotfileConfig` (snake_case JSON) | `model/*` | ☐ |
-| Rust `TabModel`/`AppFocus` | **replaced** by `PanelId` + `MainView` + sealed `Popup` | ☐ |
-| — | `config/AppProperties` (data dir name, default `dotfile-rs`) | ☐ |
+| `src/models/os.rs` (types) | `model/OperatingSystem`, `model/LinuxDistro` | ☑ |
+| `src/models/package_manager.rs` (binary/label/commands data) | `model/PackageManager`, `model/PmCommand` | ☑ |
+| `src/models/apps.rs` | `model/AppSection`, `model/AppEntry` | ☑ |
+| `src/models/shell.rs` + `shell_model.rs` | `model/ShellEntry`, `model/ShellsFile` | ☑ |
+| `SearchResult`, `ShellStatus`, `DotfileConfig` (snake_case JSON) | `model/*` | ☑ |
+| Rust `TabModel`/`AppFocus` | **replaced** by `PanelId` + `MainView` (sealed `Popup` deferred to Phase 5) | ☑ |
+| — | `config/AppProperties` (data dir name, default `dotfile-rs`) | ☑ |
 
 ## Services (Phases 3, 4, 8)
 
@@ -41,7 +41,7 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | `package_manager.rs::detect/candidates_for` | `service/PackageManagerService` | ☐ |
 | `src/service/system_service.rs` | `service/SystemService` | ☐ |
 | `src/service/install_service.rs` | `service/InstallCommandService` | ☐ |
-| `src/service/app_service.rs` | `service/AppCatalogService` | ☐ |
+| `src/service/app_service.rs` | `service/AppCatalogService` | ☑ (Phase 2; `readShellsJson` also covers `script_service.rs::read_shells`) |
 | `search_service.rs` command tables + hint | `service/SearchService` | ☐ |
 | `src/utils/decode_util.rs` | `service/DecodeUtil` | ☐ |
 | `src/utils/text_util.rs` | `service/TextUtil` | ☐ |

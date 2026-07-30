@@ -37,6 +37,9 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-01 (complete)** (next: phase-02)
-- Completed phases: phase-01
-- Blockers/deviations: (none)
+- Current phase: **phase-02 (complete)** (next: phase-03)
+- Completed phases: phase-01, phase-02
+- Blockers/deviations: added `spring-boot-starter-jackson` to `pom.xml` (not
+  pulled in by `spring-boot-starter` alone) to get the Boot-managed Jackson 3
+  `ObjectMapper`; real package is `tools.jackson.databind.ObjectMapper` /
+  `tools.jackson.core.type.TypeReference`, group `tools.jackson.core`.

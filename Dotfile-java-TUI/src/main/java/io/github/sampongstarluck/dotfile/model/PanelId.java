@@ -1,0 +1,9 @@
+package io.github.sampongstarluck.dotfile.model;
+
+/** Side panels + main, in Tab-cycle order. Number keys 1-4 map to the first four. */
+public enum PanelId {
+    STATUS, MANAGERS, SECTIONS, SHELLS, MAIN;
+
+    public PanelId next() { return values()[(ordinal() + 1) % values().length]; }
+    public PanelId prev() { return values()[(ordinal() + values().length - 1) % values().length]; }
+}

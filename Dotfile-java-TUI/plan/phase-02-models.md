@@ -243,7 +243,7 @@ public class AppCatalogServiceImp implements AppCatalogService {
 
 ## Definition of Done (Phase 2)
 
-- [ ] All models compile; zero `dev.tamboui` imports in `model/` + `service/`
-- [ ] `AppCatalogService` is an interface; `AppCatalogServiceImp` in `service/implementation/` is the only `@Service`; tests inject the interface
-- [ ] `mise run test` green with all §2.5 tests
-- [ ] Jackson imports resolved against what Boot 4.1 actually provides (note the package here: ______)
+- [x] All models compile; zero `dev.tamboui` imports in `model/` + `service/`
+- [x] `AppCatalogService` is an interface; `AppCatalogServiceImp` in `service/implementation/` is the only `@Service`; tests inject the interface
+- [x] `mise run test` green with all §2.5 tests
+- [x] Jackson imports resolved against what Boot 4.1 actually provides (note the package here: `tools.jackson.databind.ObjectMapper` / `tools.jackson.core.type.TypeReference`, group `tools.jackson.core`, pulled in via the `spring-boot-starter-jackson` starter added to `pom.xml`; annotations stayed on `com.fasterxml.jackson.annotation`)

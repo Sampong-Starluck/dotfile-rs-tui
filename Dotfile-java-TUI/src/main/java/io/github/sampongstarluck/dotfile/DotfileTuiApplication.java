@@ -8,6 +8,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.context.annotation.Bean;
 
+import io.github.sampongstarluck.dotfile.ui.SmokeTest;
+
 @SpringBootApplication
 @ConfigurationPropertiesScan
 public class DotfileTuiApplication {
@@ -22,6 +24,6 @@ public class DotfileTuiApplication {
 
     @Bean
     CommandLineRunner tui() {
-        return args -> new io.github.sampongstarluck.dotfile.ui.SmokeTest().run();
+        return args -> new SmokeTest().run();
     }
 }
