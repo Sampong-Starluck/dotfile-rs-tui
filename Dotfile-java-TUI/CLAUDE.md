@@ -37,9 +37,13 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-02 (complete)** (next: phase-03)
-- Completed phases: phase-01, phase-02
+- Current phase: **phase-03 (complete)** (next: phase-04)
+- Completed phases: phase-01, phase-02, phase-03
 - Blockers/deviations: added `spring-boot-starter-jackson` to `pom.xml` (not
   pulled in by `spring-boot-starter` alone) to get the Boot-managed Jackson 3
   `ObjectMapper`; real package is `tools.jackson.databind.ObjectMapper` /
   `tools.jackson.core.type.TypeReference`, group `tools.jackson.core`.
+  Phase 3: `PathService.which` on Windows must check existence via
+  `LinkOption.NOFOLLOW_LINKS` rather than `Files.isRegularFile` — WindowsApps
+  App Execution Alias reparse points (e.g. `winget.exe`) fail the follow-links
+  stat, which silently broke winget detection (see FEATURE-PARITY.md).

@@ -36,13 +36,13 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 
 | Rust source | Java target | Done |
 |---|---|---|
-| `os.rs::detect` + `/etc/os-release` | `service/OsService` | ☐ |
-| `which` crate | `service/PathService.which` (PATHEXT-aware) | ☐ |
-| `package_manager.rs::detect/candidates_for` | `service/PackageManagerService` | ☐ |
-| `src/service/system_service.rs` | `service/SystemService` | ☐ |
-| `src/service/install_service.rs` | `service/InstallCommandService` | ☐ |
+| `os.rs::detect` + `/etc/os-release` | `service/OsService` | ☑ |
+| `which` crate | `service/PathService.which` (PATHEXT-aware) | ☑ |
+| `package_manager.rs::detect/candidates_for` | `service/PackageManagerService` | ☑ |
+| `src/service/system_service.rs` | `service/SystemService` | ☑ |
+| `src/service/install_service.rs` | `service/InstallCommandService` | ☑ |
 | `src/service/app_service.rs` | `service/AppCatalogService` | ☑ (Phase 2; `readShellsJson` also covers `script_service.rs::read_shells`) |
-| `search_service.rs` command tables + hint | `service/SearchService` | ☐ |
+| `search_service.rs` command tables + hint | `service/SearchService` | ☑ (command tables only; parsers are Phase 4) |
 | `src/utils/decode_util.rs` | `service/DecodeUtil` | ☐ |
 | `src/utils/text_util.rs` | `service/TextUtil` | ☐ |
 | `search_service.rs` 9 search + 8 list parsers | `service/OutputParsers` | ☐ |
@@ -117,4 +117,8 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   — strict improvement.
 - Primary deliverable is the JVM fat jar on GraalVM 25; native-image is
   best-effort (Phase 11).
+- `PathService.which` on Windows checks existence with `LinkOption.NOFOLLOW_LINKS`
+  instead of `Files.isRegularFile` — `winget.exe` under `WindowsApps` is an App
+  Execution Alias reparse point NIO cannot stat through when following links,
+  which made `Files.isRegularFile` report it as absent.
 - (add more here)
