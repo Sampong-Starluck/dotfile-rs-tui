@@ -37,8 +37,22 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-04 (complete)** (next: phase-05)
+- Current phase: **phase-05 (implementation complete; interactive Definition of
+  Done rows pending a human manual run — see below)** (next: verify phase-05
+  interactively, then phase-06)
 - Completed phases: phase-01, phase-02, phase-03, phase-04
+- Phase 5: `mvn compile`/`test` green, Spring context wires end-to-end (every
+  bean incl. `TuiApp` resolves). The interactive DoD rows (focus, spinner,
+  resize, popup, quit) could NOT be verified from the agent session — no
+  `tmux` on this Windows machine, and a background-launched process here has
+  no real console handle (`BackendException: Failed to get input console
+  mode`), matching Phase 1's own precedent that this app's manual test runs
+  in a real Windows Terminal window. **Please run `mise run dev` yourself and
+  confirm the checklist in `plan/phase-05-state-loop.md`** before phase-06
+  starts. Deviations (sealed `Popup` subtypes moved into `base/` — unnamed-
+  module same-package rule; `LazygitLayout` side column is a `.min(24)` floor
+  without an upper clamp; new `service/PlatformQueryService` for async PM
+  detection) are logged in FEATURE-PARITY.md.
 - Blockers/deviations: added `spring-boot-starter-jackson` to `pom.xml` (not
   pulled in by `spring-boot-starter` alone) to get the Boot-managed Jackson 3
   `ObjectMapper`; real package is `tools.jackson.databind.ObjectMapper` /

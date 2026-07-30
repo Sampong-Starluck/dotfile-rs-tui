@@ -214,7 +214,7 @@ phase depends on:
 `DotfileTuiApplication.java`:
 
 ```java
-package io.github.sampongstarluck.dotfile;
+package com.sampong.dotfile;
 
 import org.springframework.boot.Banner;
 import org.springframework.boot.CommandLineRunner;
@@ -236,7 +236,7 @@ public class DotfileTuiApplication {
 
     @Bean
     CommandLineRunner tui() {
-        return args -> new io.github.sampongstarluck.dotfile.ui.SmokeTest().run();
+        return args -> new com.sampong.dotfile.ui.SmokeTest().run();
         // Phase 5 replaces this with the injected ui.TuiApp bean
     }
 }
@@ -245,7 +245,7 @@ public class DotfileTuiApplication {
 `config/AsyncConfig.java` (used from Phase 9, created now):
 
 ```java
-package io.github.sampongstarluck.dotfile.config;
+package com.sampong.dotfile.config;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableAsync;
@@ -259,7 +259,7 @@ public class AsyncConfig { }
 `config/AppProperties.java`:
 
 ```java
-package io.github.sampongstarluck.dotfile.config;
+package com.sampong.dotfile.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -279,7 +279,7 @@ Enable with `@ConfigurationPropertiesScan` on the application class.
 (from the official getting-started example):
 
 ```java
-package io.github.sampongstarluck.dotfile.ui;
+package com.sampong.dotfile.ui;
 
 // static-import the toolkit factory class found in api-toolkit.txt
 
@@ -325,7 +325,7 @@ dotfile:
 
 `logback-spring.xml`: single `FileAppender` → `debug.log`, pattern
 `%d{HH:mm:ss.SSS} %-5level %logger{30}:%line - %msg%n`, root INFO, package
-`io.github.sampongstarluck.dotfile` DEBUG. **No ConsoleAppender.**
+`com.sampong.dotfile` DEBUG. **No ConsoleAppender.**
 
 Copy resources (paths relative to this folder):
 

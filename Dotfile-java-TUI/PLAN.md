@@ -49,7 +49,7 @@ A cross-platform TUI wrapper around OS package managers:
 | Boilerplate | **Lombok** (Boot-managed version), scoped rules in §4a. **MapStruct: evaluated, NOT used** — models are records mapped straight from JSON; there is no DTO/entity layer to map between. Revisit only if one appears (record the decision change in FEATURE-PARITY.md) |
 | Logging | Logback → file only (`debug.log`). Console logging MUST stay off |
 | Packaging | Spring Boot fat jar (primary) + GraalVM native-image (Phase 11) |
-| Coordinates | `io.github.sampongstarluck:dotfile-java-tui`, base package `io.github.sampongstarluck.dotfile` |
+| Coordinates | `io.github.sampongstarluck:dotfile-java-tui`, base package `com.sampong.dotfile` |
 
 ### TamboUI facts (verified July 2026)
 

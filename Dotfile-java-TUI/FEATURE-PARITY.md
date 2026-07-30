@@ -6,19 +6,19 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 
 ## Toolchain
 
-| Item | Target | Done |
-|---|---|---|
-| mise-managed GraalVM 25 + Maven | `mise.toml` | ☑ |
-| Spring Boot 4.1.0, no web, banner off | `pom.xml`, `application.yml` | ☑ |
-| Virtual threads + @EnableAsync | `config/AsyncConfig`, `spring.threads.virtual.enabled` | ☑ |
-| TamboUI 0.4.0 **Toolkit DSL (fluent API)** + Panama FFM backend (Windows verified) | `tamboui-toolkit` in pom + Phase 1 smoke test | ☑ |
-| All UI written as fluent `Element` trees (no immediate-mode calls outside `Popups.overlay`) | `ui/**` | ◐ |
-| Every service = interface in `service/` + `<Name>Imp` in `service/implementation/` (only Imp has `@Service`) | all phases | ◐ |
-| State management: composed `state/` classes, unidirectional flow, no state in views/components | `state/*` | ◐ |
-| 200 ms rule: no synchronous startup step > 200 ms; slow loads lazy with spinner (PM detection async) | Phase 5/6/10 audit | ◐ |
-| Lombok scoped rules: `@Slf4j` + `@RequiredArgsConstructor` mandatory on beans; no `@Data`/`@Setter`/`@SneakyThrows`; none on records/state | PLAN.md §4a audit | ☑ |
-| MapStruct: evaluated, not used (no DTO layer) — decision recorded; revisit only if a mapping layer appears | — | ☑ |
-| `--enable-native-access=ALL-UNNAMED` everywhere (mise env, boot plugin, launcher) | Phase 1/10 | ☑ |
+| Item                                                                                                                                       | Target                                                 | Done |
+|--------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------|------|
+| mise-managed GraalVM 25 + Maven                                                                                                            | `mise.toml`                                            | ☑   |
+| Spring Boot 4.1.0, no web, banner off                                                                                                      | `pom.xml`, `application.yml`                           | ☑   |
+| Virtual threads + @EnableAsync                                                                                                             | `config/AsyncConfig`, `spring.threads.virtual.enabled` | ☑   |
+| TamboUI 0.4.0 **Toolkit DSL (fluent API)** + Panama FFM backend (Windows verified)                                                         | `tamboui-toolkit` in pom + Phase 1 smoke test          | ☑   |
+| All UI written as fluent `Element` trees (no immediate-mode calls outside `Popups.overlay`)                                                | `ui/**`                                                | ◐    |
+| Every service = interface in `service/` + `<Name>Imp` in `service/implementation/` (only Imp has `@Service`)                               | all phases                                             | ◐    |
+| State management: composed `state/` classes, unidirectional flow, no state in views/components                                             | `state/*`                                              | ◐    |
+| 200 ms rule: no synchronous startup step > 200 ms; slow loads lazy with spinner (PM detection async)                                       | Phase 5/6/10 audit                                     | ◐    |
+| Lombok scoped rules: `@Slf4j` + `@RequiredArgsConstructor` mandatory on beans; no `@Data`/`@Setter`/`@SneakyThrows`; none on records/state | PLAN.md §4a audit                                      | ☑   |
+| MapStruct: evaluated, not used (no DTO layer) — decision recorded; revisit only if a mapping layer appears                                 | —                                                      | ☑   |
+| `--enable-native-access=ALL-UNNAMED` everywhere (mise env, boot plugin, launcher)                                                          | Phase 1/10                                             | ☑   |
 
 ## Models & config (Phase 2)
 
@@ -54,14 +54,14 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 
 | Rust behavior | Java target (lazygit design) | Done |
 |---|---|---|
-| `src/app.rs::App` state + reset logic | `state/AppState` (incl. `activateManager` reset) | ☐ |
-| `src/main.rs` loop: press-only keys, help gating, quit, resize | `ui/TuiApp` | ☐ |
-| Tab switching | toolkit focus system: `.id().focusable()`, Tab/Shift-Tab/click native, `1-4` programmatic, Enter/Esc into MAIN | ☐ |
-| loading spinner | toolkit built-in animated `spinner()` | ☐ |
-| `src/ui/layout/layout.rs` | `ui/layout/LazygitLayout` (fluent row/column composition) | ☐ |
-| shared panel/list/input/log/popup drawing | `ui/component/*` factories (Panels, Lists, Inputs, Logs, Popups, HintBar) | ☐ |
-| `base/` contracts (FeatureView, KeyController, sealed Popup) | `base/*` | ☐ |
-| background completion → re-render | `requestRender` wiring on futures + log bridge | ☐ |
+| `src/app.rs::App` state + reset logic | `state/AppState` (incl. `activateManager` reset) | ☑ |
+| `src/main.rs` loop: press-only keys, help gating, quit, resize | `ui/TuiApp` | ☑ |
+| Tab switching | toolkit focus system: `.id().focusable()`, Tab/Shift-Tab/click native, `1-4` programmatic; Enter/Esc into MAIN deferred to Phase 7 (SECTIONS controller) | ☑ |
+| loading spinner | toolkit built-in animated `spinner()` (Managers panel while `platform.detecting`) | ☑ |
+| `src/ui/layout/layout.rs` | `ui/layout/LazygitLayout` (fluent row/column composition) | ☑ |
+| shared panel/list/input/log/popup drawing | `ui/component/*` factories (Panels, Lists, Inputs, Logs, Popups, HintBar, UiText) | ☑ |
+| `base/` contracts (FeatureView, KeyController, sealed Popup) | `base/*` | ☑ |
+| background completion → re-render | `PlatformQueryService` `@Async` future + `runner().runOnRenderThread(...)` + `requestRender()`; default 40ms tick also covers redraw | ☑ |
 
 ## Features (Phases 6–9)
 
@@ -132,4 +132,31 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   "fixed" — verified by simulating the Rust `splitn(2, '/')` + `split_whitespace()`
   semantics; the phase-04-parsers.md doc's own fixture answer for this case
   does not match the real Rust source's output.
+- **Phase 5:** the sealed `Popup` interface's `permits` subtypes
+  (`HelpPopup`, `SearchInputPopup`, `CustomInputPopup`, `ConfirmActionPopup`,
+  `SudoPopup`, `InstallLogPopup`) live directly in `base/`, not in their
+  feature packages as PLAN.md §5.1 originally sketched — Java requires a
+  sealed type's permitted subtypes to share its package when the project has
+  no `module-info.java` (unnamed module), and adding JPMS to a Spring Boot
+  fat jar (interacting with Phase 11's native-image) was judged out of scope
+  for this phase. Each record documents this in its Javadoc.
+- **Phase 5:** `LazygitLayout`'s side column uses a fixed `.min(24)` floor,
+  not the spec'd `min(24)/max(34)` clamp — TamboUI's Cassowary `Constraint`
+  has no composite min+max for a single layout slot, and computing the clamp
+  from the live terminal width would mean the Rect math Rule #1 tells us to
+  avoid. Side panels can grow past 34 cols on wide terminals.
+- **Phase 5:** `PackageManagerService.detect()` (blocking PATH probes) is
+  wrapped by a new `service/PlatformQueryService` (`@Async` `CompletableFuture`)
+  — not itself in PLAN.md's Phase 3 file, but required by §5.6's
+  `pmQuery.detectManagers()` lazy-load and consistent with the Phase 3
+  service/interface + `Imp` pattern.
+- **Phase 5 verification:** `mvn compile`/`test` pass and Spring context
+  wiring succeeds end-to-end (all beans, incl. `TuiApp`, resolve cleanly).
+  The full-screen Panama backend itself could not be interactively driven
+  from this session — there is no `tmux` on this Windows machine, and a
+  background-launched process here has no real console handle
+  (`BackendException: Failed to get input console mode`, the same failure
+  any TUI would hit launched this way). This matches Phase 1's own
+  precedent: the Definition of Done's focus/spinner/resize/popup/quit items
+  need a human to run `mise run dev` in an actual Windows Terminal window.
 - (add more here)

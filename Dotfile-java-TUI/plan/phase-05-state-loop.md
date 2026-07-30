@@ -16,7 +16,7 @@ Behavior references: `../src/app.rs` (state fields), `../src/main.rs`
 TamboUI's own docs recommend this exact split — lean on it:
 
 ```java
-package io.github.sampongstarluck.dotfile.base;
+package com.sampong.dotfile.base;
 
 /** V: a pure function of state → fluent Element tree. No side effects. */
 public interface FeatureView {
@@ -277,12 +277,20 @@ list controllers only — text inputs consume `j`/`k` as characters via
 
 ## Definition of Done (Phase 5)
 
-- [ ] App opens showing the full lazygit frame: 4 titled side panels `[1]…[4]`, main panel, hint bar — all via the fluent DSL (no immediate-mode `renderWidget` calls in app code except inside `Popups.overlay`)
-- [ ] First frame appears instantly; Managers panel shows a spinner until async PM detection lands (200 ms rule) — startup timing lines visible in `debug.log`
-- [ ] State lives only in `state/` classes; grep shows no mutable UI fields in views/components
-- [ ] Tab/Shift-Tab (framework) and `1`–`4` (programmatic) move focus; focused border turns green; `st.focused` stays in sync (log it)
-- [ ] Clicking a panel focuses it (framework mouse focus) — verify, note result
-- [ ] `q` quits cleanly; `?` opens a stub popup overlay and any key closes it
-- [ ] Resize reflows the fluent layout without artifacts
-- [ ] `base/`, `ui/component/`, `ui/layout/` exist as specified; feature packages stubbed
-- [ ] `mise run test` still green
+- [ ] App opens showing the full lazygit frame: 4 titled side panels `[1]…[4]`, main panel, hint bar — all via the fluent DSL (no immediate-mode `renderWidget` calls in app code except inside `Popups.overlay`) — **pending human run in Windows Terminal, see below**
+- [ ] First frame appears instantly; Managers panel shows a spinner until async PM detection lands (200 ms rule) — startup timing lines visible in `debug.log` — **pending human run**
+- [x] State lives only in `state/` classes; grep shows no mutable UI fields in views/components (feature views are stateless classes with a single `render(AppState)` method; `grep System\.out` clean)
+- [ ] Tab/Shift-Tab (framework) and `1`–`4` (programmatic) move focus; focused border turns green; `st.focused` stays in sync (log it) — **pending human run**
+- [ ] Clicking a panel focuses it (framework mouse focus) — verify, note result — **pending human run**
+- [ ] `q` quits cleanly; `?` opens a stub popup overlay and any key closes it — **pending human run**
+- [ ] Resize reflows the fluent layout without artifacts — **pending human run**
+- [x] `base/`, `ui/component/`, `ui/layout/` exist as specified; feature packages stubbed
+- [x] `mise run test` still green
+
+**Verification note:** `mvn compile`/`test` are green and the Spring context wires
+end-to-end (every bean, including `TuiApp`, resolves). The interactive rows above
+could not be driven from this session — no `tmux` on this Windows machine, and a
+background-launched process here gets no real console handle
+(`BackendException: Failed to get input console mode`), matching Phase 1's own
+established precedent that this app's manual test runs in a real Windows Terminal
+window. See FEATURE-PARITY.md deviations for the full note.

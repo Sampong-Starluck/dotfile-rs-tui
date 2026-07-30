@@ -7,7 +7,7 @@
     </encoder>
   </appender>
 
-  <logger name="io.github.sampongstarluck.dotfile" level="DEBUG"/>
+  <logger name="com.sampong.dotfile" level="DEBUG"/>
 
   <root level="INFO">
     <appender-ref ref="FILE"/>

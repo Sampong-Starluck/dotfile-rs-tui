@@ -7,7 +7,7 @@ Jackson `ObjectMapper`. No `dev.tamboui` imports anywhere in this phase.
 Rust behavior references: `../src/models/*.rs`. UI enums follow the
 **lazygit design in PLAN.md §5**, not the Rust tab/focus enums.
 
-Files go in `io.github.sampongstarluck.dotfile.model` unless noted.
+Files go in `com.sampong.dotfile.model` unless noted.
 
 > Spring Boot 4.1 ships **Jackson 3** — the `ObjectMapper` you inject may live
 > in `tools.jackson.databind` (annotations still `com.fasterxml.jackson.annotation`).
