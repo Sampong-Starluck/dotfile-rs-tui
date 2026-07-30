@@ -106,7 +106,7 @@ Dotfile-java-TUI/
 │   ├── application.yml  logback-spring.xml
 │   ├── data/apps.json  data/shells.json          ← copied from ../src/json/
 │   └── scripts/{bash,zsh,fish,nu,posh}/main_profile.*  ← copied from ../src/scripts/
-└── src/main/java/io/github/sampongstarluck/dotfile/
+└── src/main/java/com/sampong/dotfile/
     ├── DotfileTuiApplication.java   ← @SpringBootApplication, hands off to ui.TuiApp
     ├── config/                      ← ALL configuration lives here
     │   ├── AsyncConfig.java         ← @EnableAsync + virtual-thread executor
@@ -120,13 +120,13 @@ Dotfile-java-TUI/
     │   └── implementation/          ← the @Service classes, named <Interface>Imp
     │       (e.g. service/OsService.java ↔ service/implementation/OsServiceImp.java)
     ├── event/                       ← Spring application events (InstallLogEvent, TaskDoneEvent)
-    ├── state/                       ← TUI state management (single source of truth, §5a)
-    │   ├── AppState.java            ← root: navigation + composed feature states (not a bean)
-    │   ├── PlatformState.java  CatalogState.java  SearchState.java
-    │   ├── InstalledState.java  InstallState.java  ScriptsState.java
     └── ui/                          ← V + C of MVC; the ONLY package importing dev.tamboui
         ├── TuiApp.java              ← the ONE entry point: extends ToolkitApp, render() = root Element,
         │                              global key handler, focus↔PanelId mapping
+        ├── state/                   ← TUI state management (single source of truth, §5a)
+        │   ├── AppState.java        ← root: navigation + composed feature states (not a bean)
+        │   ├── PlatformState.java  CatalogState.java  SearchState.java
+        │   ├── InstalledState.java  InstallState.java  ScriptsState.java
         ├── layout/
         │   └── LazygitLayout.java   ← composes the §5 frame as a fluent row/column Element tree
         ├── component/               ← reusable fluent Element factories (DRY)
@@ -140,6 +140,13 @@ Dotfile-java-TUI/
             ├── status/    managers/    catalog/    search/
             ├── installed/ install/     scripts/    help/
 ```
+
+Deviation from an earlier draft of this tree: `state/` and `feature/` live under `ui/`
+(`ui.state`, `ui.feature.*`), not as top-level siblings — `state/` only exists to back
+the `ui/` render loop and no non-UI code touches `AppState`, so nesting it removes a
+top-level package that existed for no consumer outside `ui`. `feature/` was already a
+factual sibling of `ui/` in the code before this move (a Phase-5 drift from this
+diagram); both are now consistent with where the code actually lives.
 
 **Principles applied — the implementer must keep these true:**
 - **S**RP: a view class only renders; a controller class only maps keys to
