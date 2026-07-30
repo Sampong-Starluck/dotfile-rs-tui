@@ -23,6 +23,14 @@ public class ManagersController implements KeyController {
             st.activateManager(st.platform.managersCursor);
             return EventResult.HANDLED;
         }
+        if (Keys.isPageUp(key) || key.isChar('K')) {
+            st.platform.scrollCommands(-1);
+            return EventResult.HANDLED;
+        }
+        if (Keys.isPageDown(key) || key.isChar('J')) {
+            st.platform.scrollCommands(1);
+            return EventResult.HANDLED;
+        }
         return EventResult.UNHANDLED;
     }
 }

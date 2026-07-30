@@ -37,22 +37,35 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-05 (implementation complete; interactive Definition of
-  Done rows pending a human manual run — see below)** (next: verify phase-05
-  interactively, then phase-06)
-- Completed phases: phase-01, phase-02, phase-03, phase-04
+- Current phase: **phase-06 (implementation complete; interactive Definition of
+  Done rows pending a human manual run — see below)** (next: verify phase-06
+  interactively, then phase-07)
+- Completed phases: phase-01, phase-02, phase-03, phase-04, phase-05 (interactive
+  rows still unverified by a human — same caveat as phase-06 below)
+- Phase 6: `mvn compile`/`test` green; `mise run dev` reaches `ToolkitApp.run()`
+  (all beans, incl. the new `ui/component/Responsive` and its use in
+  `ManagersView`/`CommandsView`, resolve cleanly) and fails only at the same
+  `BackendException: Failed to get input console mode` recorded for Phase 5 —
+  no `tmux` on this Windows machine and a background-launched process has no
+  real console handle. **Please run `mise run dev` yourself and confirm the
+  checklist in `plan/phase-06-status-managers.md`** (and, if not already done,
+  `plan/phase-05-state-loop.md`'s) before phase-07 starts. Deviations (a new
+  `ui/component/Responsive` element for width-dependent degrade rules since
+  the fluent tree is built before Cassowary layout runs; the Commands table's
+  `[n/total]` scroll indicator lives in the panel body, not the MAIN panel's
+  border title, for the same reason; `FeatureView.title(AppState)` added so
+  MAIN panels can set a dynamic border title) are logged in FEATURE-PARITY.md.
 - Phase 5: `mvn compile`/`test` green, Spring context wires end-to-end (every
   bean incl. `TuiApp` resolves). The interactive DoD rows (focus, spinner,
   resize, popup, quit) could NOT be verified from the agent session — no
   `tmux` on this Windows machine, and a background-launched process here has
   no real console handle (`BackendException: Failed to get input console
   mode`), matching Phase 1's own precedent that this app's manual test runs
-  in a real Windows Terminal window. **Please run `mise run dev` yourself and
-  confirm the checklist in `plan/phase-05-state-loop.md`** before phase-06
-  starts. Deviations (sealed `Popup` subtypes moved into `base/` — unnamed-
-  module same-package rule; `LazygitLayout` side column is a `.min(24)` floor
-  without an upper clamp; new `service/PlatformQueryService` for async PM
-  detection) are logged in FEATURE-PARITY.md.
+  in a real Windows Terminal window. Deviations (sealed `Popup` subtypes moved
+  into `base/` — unnamed-module same-package rule; `LazygitLayout` side column
+  is a `.min(24)` floor without an upper clamp; new
+  `service/PlatformQueryService` for async PM detection) are logged in
+  FEATURE-PARITY.md.
 - Blockers/deviations: added `spring-boot-starter-jackson` to `pom.xml` (not
   pulled in by `spring-boot-starter` alone) to get the Boot-managed Jackson 3
   `ObjectMapper`; real package is `tools.jackson.databind.ObjectMapper` /

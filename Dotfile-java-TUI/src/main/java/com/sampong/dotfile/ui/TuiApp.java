@@ -74,12 +74,13 @@ public class TuiApp extends ToolkitApp {
     protected Element render() {
         frameTick();
 
+        FeatureView mainView = mainViews.get(st.mainView);
         Column root = LazygitLayout.frame(
                 panelViews.get(PanelId.STATUS).render(st),
                 panelViews.get(PanelId.MANAGERS).render(st),
                 panelViews.get(PanelId.SECTIONS).render(st),
                 panelViews.get(PanelId.SHELLS).render(st),
-                Panels.framed(PanelId.MAIN.elementId(), "Main", mainViews.get(st.mainView).render(st)),
+                Panels.framed(PanelId.MAIN.elementId(), mainView.title(st), mainView.render(st)),
                 HintBar.of(keyHints()),
                 st.platform.packageManagers.size(),
                 shellCount());
@@ -184,13 +185,22 @@ public class TuiApp extends ToolkitApp {
     }
 
     private List<HintBar.Binding> keyHints() {
-        return List.of(
-                new HintBar.Binding("1-4", "jump"),
-                new HintBar.Binding("tab", "cycle"),
-                new HintBar.Binding("j/k", "move"),
-                new HintBar.Binding("space", "select"),
-                new HintBar.Binding("?", "help"),
-                new HintBar.Binding("q", "quit"));
+        return switch (st.focused) {
+            case STATUS, MANAGERS -> List.of(
+                    new HintBar.Binding("enter", "use manager"),
+                    new HintBar.Binding("j/k", "move"),
+                    new HintBar.Binding("pgup/pgdn", "scroll commands"),
+                    new HintBar.Binding("1-4", "jump"),
+                    new HintBar.Binding("?", "help"),
+                    new HintBar.Binding("q", "quit"));
+            default -> List.of(
+                    new HintBar.Binding("1-4", "jump"),
+                    new HintBar.Binding("tab", "cycle"),
+                    new HintBar.Binding("j/k", "move"),
+                    new HintBar.Binding("space", "select"),
+                    new HintBar.Binding("?", "help"),
+                    new HintBar.Binding("q", "quit"));
+        };
     }
 
     private static Map<PanelId, FeatureView> buildPanelViews() {

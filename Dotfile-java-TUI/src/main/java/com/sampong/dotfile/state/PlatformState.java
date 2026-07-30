@@ -17,10 +17,6 @@ public class PlatformState {
     public int managersCursor = 0;
     public int commandScroll = 0;
 
-    public String activeBinary() {
-        return selectedManager().map(PackageManager::binary).orElse("unknown");
-    }
-
     public Optional<PackageManager> selectedManager() {
         if (packageManagers.isEmpty() || selectedPm < 0 || selectedPm >= packageManagers.size()) {
             return Optional.empty();
@@ -34,6 +30,11 @@ public class PlatformState {
             return;
         }
         managersCursor = Math.floorMod(managersCursor + delta, packageManagers.size());
+    }
+
+    /** Upper bound (total - visible rows) isn't known here; the command view clamps it at render time. */
+    public void scrollCommands(int delta) {
+        commandScroll = Math.max(0, commandScroll + delta);
     }
 
     /** Package-private: only {@link AppState#activateManager(int)} may cross-reset other features. */

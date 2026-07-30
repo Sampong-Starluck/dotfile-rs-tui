@@ -24,6 +24,14 @@ public final class Keys {
         return e.code() == KeyCode.ESCAPE;
     }
 
+    public static boolean isPageUp(KeyEvent e) {
+        return e.code() == KeyCode.PAGE_UP;
+    }
+
+    public static boolean isPageDown(KeyEvent e) {
+        return e.code() == KeyCode.PAGE_DOWN;
+    }
+
     public static boolean isBackspace(KeyEvent e) {
         return e.code() == KeyCode.BACKSPACE;
     }

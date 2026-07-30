@@ -63,9 +63,16 @@ to the active manager when the cursor panel isn't MANAGERS:
 
 ## Definition of Done (Phase 6)
 
-- [ ] App's first frame is instant; panel `[2]` shows the detecting spinner briefly, then real managers (verify timing lines in `debug.log`)
-- [ ] Status shows `Windows · winget` (or the active manager) live
-- [ ] Managers panel lists real detected managers; cursor moves; `●` follows Enter
-- [ ] Main panel previews the cursor manager's command table; activating with Enter keeps state consistent (catalog reset happens — visible in Phase 7)
-- [ ] Commands table scrolls and clamps correctly; narrow/short windows degrade per spec
-- [ ] Hint bar updates when focus enters these panels
+- [ ] App's first frame is instant; panel `[2]` shows the detecting spinner briefly, then real managers (verify timing lines in `debug.log`) — **pending human run in Windows Terminal, see below**
+- [ ] Status shows `Windows · winget` (or the active manager) live — **pending human run**
+- [ ] Managers panel lists real detected managers; cursor moves; `●` follows Enter — **pending human run**
+- [ ] Main panel previews the cursor manager's command table; activating with Enter keeps state consistent (catalog reset happens — visible in Phase 7) — **pending human run**
+- [ ] Commands table scrolls and clamps correctly; narrow/short windows degrade per spec — **pending human run**
+- [ ] Hint bar updates when focus enters these panels — **pending human run**
+
+**Verification note:** `mvn compile`/`test` are green. `mise run dev` was launched from this
+session to confirm Spring wiring: it reaches `ToolkitApp.run()` (all beans, including the new
+`Responsive` component usage inside `ManagersView`/`CommandsView`, resolve cleanly) and fails only
+at backend creation (`BackendException: Failed to get input console mode`) — the same
+no-real-console-handle limitation recorded in Phase 5, not a regression from this phase. The
+interactive rows above need a human to run `mise run dev` in an actual Windows Terminal window.

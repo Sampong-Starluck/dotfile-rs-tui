@@ -67,9 +67,9 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 
 | Rust behavior | Java target | Done |
 |---|---|---|
-| home sidebar (PM list) + platform info | `feature/status/StatusPanel` + `feature/managers/ManagersPanel` | ☐ |
-| home command cheat-sheet table + scroll | `feature/managers/CommandsView` | ☐ |
-| PM picker modal | **deleted** — Managers panel is the picker | ☐ |
+| home sidebar (PM list) + platform info | `feature/status/StatusPanel` + `feature/managers/ManagersPanel` | ☑ |
+| home command cheat-sheet table + scroll | `feature/managers/CommandsView` | ☑ |
+| PM picker modal | **deleted** — Managers panel is the picker | ☑ |
 | catalog sections + apps list, `[✓]`/`[I]`, badge | `feature/catalog/` SectionsPanel + AppsView | ☐ |
 | custom package input | `CustomInputPopup` | ☐ |
 | search input + results (3-col, loading, empty) | `feature/search/` SearchInputPopup + SearchResultsView | ☐ |
@@ -159,4 +159,27 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   any TUI would hit launched this way). This matches Phase 1's own
   precedent: the Definition of Done's focus/spinner/resize/popup/quit items
   need a human to run `mise run dev` in an actual Windows Terminal window.
+- **Phase 6:** width-dependent degrade rules (Managers panel `binary()` vs
+  `label()` + description at ≥30 cols; Commands table's 45%/15-col split and
+  the `w<20 || h<4` "terminal too small" guard) need the real rendered
+  `Rect`, which only exists after the Cassowary layout solver runs — after
+  the fluent tree is already built. Added `ui/component/Responsive`
+  (`Element` implemented directly, the same technique PLAN.md already
+  sanctions for popups) to defer that content decision to its own
+  `render(Frame, Rect, RenderContext)` call, where the real area is known.
+- **Phase 6:** the Commands table's `"[<scroll+1>/<total>]"` indicator is
+  rendered as a content line above the table, not baked into the MAIN
+  panel's border title — `Panel.title()` takes a fixed `Line` set before
+  layout runs, so it can't depend on `visibleRows` (which needs the render-
+  time area, same root cause as the `Responsive` note above). The title
+  itself (`"Commands — <label>"`) *is* wired dynamically per main view via
+  a new `FeatureView.title(AppState)` default method, since that part only
+  depends on state, not area.
+- **Phase 6 verification:** `mvn compile`/`test` pass. `mise run dev` was
+  launched from this session and reached `ToolkitApp.run()` (all beans,
+  incl. the new `Responsive`-based views, resolve cleanly), failing only at
+  the same `BackendException: Failed to get input console mode` recorded in
+  Phase 5 — not a regression. The interactive DoD rows (spinner timing,
+  cursor/`●` movement, table scroll/clamp, hint-bar focus updates) need a
+  human to run `mise run dev` in an actual Windows Terminal window.
 - (add more here)
