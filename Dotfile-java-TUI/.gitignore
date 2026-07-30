@@ -1,0 +1,4 @@
+target/
+debug.log
+api-*.txt
+.mise.local.toml

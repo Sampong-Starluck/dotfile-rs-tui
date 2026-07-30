@@ -1,0 +1,22 @@
+[tools]
+# GraalVM JDK 25
+java = "oracle-graalvm-25"
+maven = "3.9"
+
+[env]
+# Panama FFM backend performs native downcalls — required on JDK 24+
+JAVA_TOOL_OPTIONS = "--enable-native-access=ALL-UNNAMED"
+
+[tasks.dev]
+run = "mvn -q spring-boot:run"
+description = "Run the TUI in dev mode"
+
+[tasks.test]
+run = "mvn -q test"
+
+[tasks.build]
+run = "mvn -q clean package"
+
+[tasks.native]
+run = "mvn -q -Pnative clean native:compile"
+description = "GraalVM native image (Phase 11)"
