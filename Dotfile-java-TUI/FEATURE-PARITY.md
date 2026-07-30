@@ -43,9 +43,9 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | `src/service/install_service.rs` | `service/InstallCommandService` | ☑ |
 | `src/service/app_service.rs` | `service/AppCatalogService` | ☑ (Phase 2; `readShellsJson` also covers `script_service.rs::read_shells`) |
 | `search_service.rs` command tables + hint | `service/SearchService` | ☑ (command tables only; parsers are Phase 4) |
-| `src/utils/decode_util.rs` | `service/DecodeUtil` | ☐ |
-| `src/utils/text_util.rs` | `service/TextUtil` | ☐ |
-| `search_service.rs` 9 search + 8 list parsers | `service/OutputParsers` | ☐ |
+| `src/utils/decode_util.rs` | `service/DecodeUtil` | ☑ |
+| `src/utils/text_util.rs` | `service/TextUtil` | ☑ |
+| `search_service.rs` 9 search + 8 list parsers | `service/OutputParsers` | ☑ |
 | `app_tab.rs::build_commands/build_remove_commands/selected_display_names` | `service/CommandPlanner` | ☐ |
 | `src/service/script_service.rs` (all fs/profile/config logic) | `service/ScriptService` | ☐ |
 | `src/logging.rs` (file-only logging) | `logback-spring.xml` → `debug.log` | ☐ |
@@ -121,4 +121,15 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   instead of `Files.isRegularFile` — `winget.exe` under `WindowsApps` is an App
   Execution Alias reparse point NIO cannot stat through when following links,
   which made `Files.isRegularFile` report it as absent.
+- `parse_apt_search` (`../src/service/search_service.rs:256`, ported to
+  `OutputParsers.parseAptSearch`) has a pre-existing quirk: it splits the line
+  on the first `/` and takes the FIRST whitespace token of the remainder as
+  the version. For real `apt search` output (`pkg/suite version arch`) that
+  first token is the suite codename (e.g. `noble`), not the version — the
+  actual version is the *second* token of the remainder. `parse_apt_list`
+  does not have this bug (it indexes the whitespace tokens of the whole line
+  correctly). Ported byte-perfect per Rule #1/PLAN.md §8.2 rather than
+  "fixed" — verified by simulating the Rust `splitn(2, '/')` + `split_whitespace()`
+  semantics; the phase-04-parsers.md doc's own fixture answer for this case
+  does not match the real Rust source's output.
 - (add more here)

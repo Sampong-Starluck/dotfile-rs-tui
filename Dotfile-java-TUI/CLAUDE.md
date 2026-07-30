@@ -37,8 +37,8 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-03 (complete)** (next: phase-04)
-- Completed phases: phase-01, phase-02, phase-03
+- Current phase: **phase-04 (complete)** (next: phase-05)
+- Completed phases: phase-01, phase-02, phase-03, phase-04
 - Blockers/deviations: added `spring-boot-starter-jackson` to `pom.xml` (not
   pulled in by `spring-boot-starter` alone) to get the Boot-managed Jackson 3
   `ObjectMapper`; real package is `tools.jackson.databind.ObjectMapper` /
@@ -47,3 +47,10 @@ Compile after every file: `mise exec -- mvn -q compile`.
   `LinkOption.NOFOLLOW_LINKS` rather than `Files.isRegularFile` — WindowsApps
   App Execution Alias reparse points (e.g. `winget.exe`) fail the follow-links
   stat, which silently broke winget detection (see FEATURE-PARITY.md).
+  Phase 4: `parse_apt_search` in the Rust source has a pre-existing bug
+  (version = first whitespace token after the first `/`, which is actually
+  the suite codename, not the version) — ported byte-perfect per Rule #1,
+  NOT the phase-04-parsers.md fixture answer for that case, which does not
+  match the real Rust behavior (verified against `splitn(2,'/')` semantics;
+  see FEATURE-PARITY.md deviations). Live smoke test against real
+  `winget search git` on this machine returned 319 parsed rows.

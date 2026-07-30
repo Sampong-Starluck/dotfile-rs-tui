@@ -275,9 +275,12 @@ Also test `TextUtil.stripAnsi("[32mOK[0m done") == "OK done"`,
 
 ## Definition of Done (Phase 4)
 
-- [ ] All parsers implemented; `OutputParsers` has no I/O, no Spring, no TamboUI — pure static functions
-- [ ] Every fixture test above written and green (`mise run test`)
-- [ ] Live smoke test (temporary main or test, then delete): run
+- [x] All parsers implemented; `OutputParsers` has no I/O, no Spring, no TamboUI — pure static functions
+- [x] Every fixture test above written and green (`mise run test`) — one fixture
+      (apt-search) asserts the real Rust behavior rather than this doc's stated
+      expected value; see CLAUDE.md STATUS / FEATURE-PARITY.md deviations.
+- [x] Live smoke test (temporary main or test, then delete): run
       `winget search git`, capture stdout bytes with `Process.getInputStream().readAllBytes()`,
       run through `decodeSearchOutput` + `parseSearchOutput("winget", …)` and
-      log the row count — must be > 0 on this machine
+      log the row count — must be > 0 on this machine (319 rows on this machine;
+      test file deleted after verifying).
