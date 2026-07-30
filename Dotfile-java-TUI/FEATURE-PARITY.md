@@ -19,6 +19,8 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | Lombok scoped rules: `@Slf4j` + `@RequiredArgsConstructor` mandatory on beans; no `@Data`/`@Setter`/`@SneakyThrows`; none on records/state | PLAN.md §4a audit                                      | ☑   |
 | MapStruct: evaluated, not used (no DTO layer) — decision recorded; revisit only if a mapping layer appears                                 | —                                                      | ☑   |
 | `--enable-native-access=ALL-UNNAMED` everywhere (mise env, boot plugin, launcher)                                                          | Phase 1/10                                             | ☑   |
+| JSpecify null-safety: `@NullMarked` on every package, `@Nullable` on genuinely-nullable fields/params/returns                              | `pom.xml` + `package-info.java` per package            | ☑   |
+| Jakarta/Spring Bean Validation: evaluated, not added (no fail-fast case exists yet) — decision recorded; revisit at Phase 8               | PLAN.md §3                                             | ☑   |
 
 ## Models & config (Phase 2)
 

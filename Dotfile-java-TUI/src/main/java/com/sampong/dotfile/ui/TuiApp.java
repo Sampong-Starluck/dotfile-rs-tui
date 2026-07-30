@@ -59,13 +59,12 @@ public class TuiApp extends ToolkitApp {
     private final Map<PanelId, KeyController> panelControllers = buildPanelControllers();
     private final Map<MainView, FeatureView> mainViews = buildMainViews();
 
-    private AppState st;
+    private final AppState st = new AppState();
     private boolean platformDetectStarted;
 
     @Override
     protected void onStart() {
         long start = System.nanoTime();
-        st = new AppState();
         st.platform.os = osService.detect();
         log.debug("startup: OS detect took {}ms", (System.nanoTime() - start) / 1_000_000);
     }

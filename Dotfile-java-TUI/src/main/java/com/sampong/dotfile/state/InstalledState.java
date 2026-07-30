@@ -1,6 +1,7 @@
 package com.sampong.dotfile.state;
 
 import com.sampong.dotfile.model.SearchResult;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -16,7 +17,7 @@ public class InstalledState {
     public boolean loading = false;
     public boolean autoLoaded = false;
     public boolean removeMode = false;
-    public CompletableFuture<List<SearchResult>> future = null;
+    public @Nullable CompletableFuture<List<SearchResult>> future = null;
 
     public void reset() {
         packages = new ArrayList<>();

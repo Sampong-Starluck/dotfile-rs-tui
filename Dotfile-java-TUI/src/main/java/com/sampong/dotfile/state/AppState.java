@@ -3,6 +3,7 @@ package com.sampong.dotfile.state;
 import com.sampong.dotfile.base.Popup;
 import com.sampong.dotfile.model.MainView;
 import com.sampong.dotfile.model.PanelId;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Root state: navigation only + one composed state object per feature.
@@ -11,7 +12,7 @@ import com.sampong.dotfile.model.PanelId;
 public class AppState {
     public PanelId focused = PanelId.MANAGERS;
     public MainView mainView = MainView.COMMANDS;
-    public Popup popup = null;
+    public @Nullable Popup popup = null;
     public boolean running = true;
 
     public final PlatformState platform = new PlatformState();

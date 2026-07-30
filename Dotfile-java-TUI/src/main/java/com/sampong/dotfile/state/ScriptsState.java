@@ -1,6 +1,7 @@
 package com.sampong.dotfile.state;
 
 import com.sampong.dotfile.model.ShellStatus;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -9,6 +10,6 @@ import java.util.List;
 public class ScriptsState {
     public int shellCursor = 0;
     public final List<String> log = new ArrayList<>();
-    public List<ShellStatus> shells = null;
-    public String primaryShell = null;
+    public @Nullable List<ShellStatus> shells = null;
+    public @Nullable String primaryShell = null;
 }

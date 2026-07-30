@@ -1,7 +1,9 @@
 package com.sampong.dotfile.model;
 
+import org.jspecify.annotations.Nullable;
+
 /** Port of Rust {@code models/os.rs::OperatingSystem}. Detection is Phase 3. */
-public record OperatingSystem(Kind kind, LinuxDistro distro, String distroName) {
+public record OperatingSystem(Kind kind, @Nullable LinuxDistro distro, @Nullable String distroName) {
     public enum Kind { WINDOWS, MACOS, LINUX, UNKNOWN }
 
     public String label() {

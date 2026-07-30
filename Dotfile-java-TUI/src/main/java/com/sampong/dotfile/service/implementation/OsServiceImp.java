@@ -5,6 +5,7 @@ import com.sampong.dotfile.model.OperatingSystem;
 import com.sampong.dotfile.service.OsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -18,7 +19,7 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class OsServiceImp implements OsService {
 
-    private record DistroResult(LinuxDistro distro, String name) {}
+    private record DistroResult(@Nullable LinuxDistro distro, @Nullable String name) {}
 
     @Override
     public boolean isWindows() { return osName().contains("win"); }

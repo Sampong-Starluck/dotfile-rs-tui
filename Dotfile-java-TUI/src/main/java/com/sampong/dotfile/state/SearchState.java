@@ -1,6 +1,7 @@
 package com.sampong.dotfile.state;
 
 import com.sampong.dotfile.model.SearchResult;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,7 +13,7 @@ public class SearchState {
     public int cursor = 0;
     public boolean loading = false;
     public String lastQuery = "";
-    public CompletableFuture<List<SearchResult>> future = null;
+    public @Nullable CompletableFuture<List<SearchResult>> future = null;
 
     public void reset() {
         results = new ArrayList<>();

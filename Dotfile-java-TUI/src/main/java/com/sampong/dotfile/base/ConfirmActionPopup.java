@@ -2,11 +2,12 @@ package com.sampong.dotfile.base;
 
 import dev.tamboui.toolkit.event.EventResult;
 import com.sampong.dotfile.ui.component.Popups;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
 /** Lazygit-style confirm dialog: lists the exact commands, y/enter run, n/esc cancel (Phase 7/9). */
-public record ConfirmActionPopup(String title, List<String> commands, Runnable onConfirm) implements Popup {
+public record ConfirmActionPopup(String title, List<String> commands, @Nullable Runnable onConfirm) implements Popup {
 
     @Override
     public FeatureView view() {
