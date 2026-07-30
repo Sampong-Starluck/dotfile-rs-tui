@@ -26,6 +26,11 @@ public class PlatformState {
         return Optional.of(packageManagers.get(selectedPm));
     }
 
+    /** Port of Rust {@code App::active_package_manager()}: binary of the active manager, "unknown" when none. */
+    public String activeBinary() {
+        return selectedManager().map(pm -> pm.binary()).orElse("unknown");
+    }
+
     public void moveCursor(int delta) {
         if (packageManagers.isEmpty()) {
             managersCursor = 0;

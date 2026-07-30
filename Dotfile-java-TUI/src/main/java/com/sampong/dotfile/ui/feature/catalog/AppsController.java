@@ -4,7 +4,8 @@ import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.tui.event.KeyCode;
 import dev.tamboui.tui.event.KeyEvent;
 import com.sampong.dotfile.base.KeyController;
-import com.sampong.dotfile.model.MainView;
+import com.sampong.dotfile.model.AppEntry;
+import com.sampong.dotfile.model.AppSection;
 import com.sampong.dotfile.model.PanelId;
 import com.sampong.dotfile.service.CommandPlanner;
 import com.sampong.dotfile.service.PackageQueryService;
@@ -12,28 +13,41 @@ import com.sampong.dotfile.ui.Keys;
 import com.sampong.dotfile.ui.state.AppState;
 import lombok.RequiredArgsConstructor;
 
-/** Section navigation; Enter/→ into MAIN/APPS; {@code / c l d} open the shared catalog actions. */
+import java.util.List;
+
+/** MAIN/APPS key handling: cursor, Space-select, popups, jump to Installed, Esc back to Sections. */
 @RequiredArgsConstructor
-public class SectionsController implements KeyController {
+public class AppsController implements KeyController {
 
     private final CommandPlanner commandPlanner;
     private final PackageQueryService packageQueryService;
 
     @Override
     public EventResult handleKey(KeyEvent key, AppState st) {
-        int sectionCount = st.catalog.apps != null ? st.catalog.apps.size() : 0;
+        List<AppSection> apps = st.catalog.apps;
+        AppSection section = apps != null && !apps.isEmpty() && st.catalog.sectionCursor < apps.size()
+                ? apps.get(st.catalog.sectionCursor) : null;
+        int appCount = section != null ? section.apps().size() : 0;
 
         if (Keys.isUp(key)) {
-            moveCursor(st, sectionCount, -1);
+            if (appCount > 0) {
+                st.catalog.appCursor = Math.floorMod(st.catalog.appCursor - 1, appCount);
+            }
             return EventResult.HANDLED;
         }
         if (Keys.isDown(key)) {
-            moveCursor(st, sectionCount, 1);
+            if (appCount > 0) {
+                st.catalog.appCursor = Math.floorMod(st.catalog.appCursor + 1, appCount);
+            }
             return EventResult.HANDLED;
         }
-        if (Keys.isEnter(key) || key.code() == KeyCode.RIGHT || key.isChar(' ')) {
-            st.mainView = MainView.APPS;
-            st.requestFocus(PanelId.MAIN);
+        if (key.isChar(' ')) {
+            if (section != null && st.catalog.appCursor < appCount) {
+                AppEntry entry = section.apps().get(st.catalog.appCursor);
+                if (!st.catalog.selectedIds.remove(entry.id())) {
+                    st.catalog.selectedIds.add(entry.id());
+                }
+            }
             return EventResult.HANDLED;
         }
         if (key.isChar('/')) {
@@ -52,11 +66,10 @@ public class SectionsController implements KeyController {
             CatalogActions.openInstallConfirm(st, commandPlanner);
             return EventResult.HANDLED;
         }
+        if (Keys.isEsc(key) || key.code() == KeyCode.LEFT) {
+            st.requestFocus(PanelId.SECTIONS);
+            return EventResult.HANDLED;
+        }
         return EventResult.UNHANDLED;
-    }
-
-    private static void moveCursor(AppState st, int sectionCount, int delta) {
-        st.catalog.sectionCursor = sectionCount == 0 ? 0 : Math.floorMod(st.catalog.sectionCursor + delta, sectionCount);
-        st.catalog.appCursor = 0;
     }
 }

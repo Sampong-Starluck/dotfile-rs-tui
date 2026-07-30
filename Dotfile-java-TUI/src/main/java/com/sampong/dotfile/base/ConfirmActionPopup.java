@@ -7,11 +7,11 @@ import org.jspecify.annotations.Nullable;
 import java.util.List;
 
 /** Lazygit-style confirm dialog: lists the exact commands, y/enter run, n/esc cancel (Phase 7/9). */
-public record ConfirmActionPopup(String title, List<String> commands, @Nullable Runnable onConfirm) implements Popup {
+public record ConfirmActionPopup(String title, String warning, List<String> commands, @Nullable Runnable onConfirm) implements Popup {
 
     @Override
     public FeatureView view() {
-        return st -> Popups.confirm(title, commands, "Run", "Cancel");
+        return st -> Popups.confirm(title, warning, commands, "Run", "Cancel");
     }
 
     @Override

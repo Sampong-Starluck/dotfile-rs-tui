@@ -72,12 +72,12 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | home sidebar (PM list) + platform info | `feature/status/StatusPanel` + `feature/managers/ManagersPanel` | ☑ |
 | home command cheat-sheet table + scroll | `feature/managers/CommandsView` | ☑ |
 | PM picker modal | **deleted** — Managers panel is the picker | ☑ |
-| catalog sections + apps list, `[✓]`/`[I]`, badge | `feature/catalog/` SectionsPanel + AppsView | ☐ |
-| custom package input | `CustomInputPopup` | ☐ |
-| search input + results (3-col, loading, empty) | `feature/search/` SearchInputPopup + SearchResultsView | ☐ |
-| installed view (red remove styling, refresh) | `feature/installed/InstalledView` | ☐ |
-| install/remove decision tree | `feature/install/InstallController` | ☐ |
-| (new) explicit confirm before running commands | `ConfirmActionPopup` (lazygit-style) | ☐ |
+| catalog sections + apps list, `[✓]`/`[I]`, badge | `feature/catalog/` SectionsView + AppsView | ☑ |
+| custom package input | `CustomInputPopup` | ☑ |
+| search input + results (3-col, loading, empty) | `feature/search/` SearchInputPopup + SearchResultsView | ☑ |
+| installed view (red remove styling, refresh) | `feature/installed/InstalledView` | ☑ |
+| install/remove decision tree | `feature/install/InstallController` | ☐ (Phase 9; contract recorded in `CatalogActions`/`SystemService`) |
+| (new) explicit confirm before running commands | `ConfirmActionPopup` (lazygit-style) | ☑ |
 | sudo password modal | `SudoPopup` (masked input added) | ☐ |
 | install modal: colored log, autoscroll, stdin input | `InstallLogPopup` + `LogView` | ☐ |
 | scripts tab (shells list, info, log, all keys) | `feature/scripts/` ShellsPanel + ShellInfoView + ScriptsController | ☐ |
@@ -86,8 +86,8 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 
 | Rust behavior | Java target | Done |
 |---|---|---|
-| `run_search` thread + mpsc | `PackageQueryService.search` `@Async` → `CompletableFuture`, polled per frame | ☐ |
-| `run_list_installed` | `PackageQueryService.listInstalled` | ☐ |
+| `run_search` thread + mpsc | `PackageQueryService.search` `@Async` → `CompletableFuture`, polled per frame | ☐ (Phase 7 wired the future/drain plumbing + stub body; Phase 9 spawns the real process) |
+| `run_list_installed` | `PackageQueryService.listInstalled` | ☐ (same — Phase 7 stub, Phase 9 real) |
 | streamed install/remove + stdin relay + sudo -S | `InstallExecutionService.runStreaming` + `InstallLogEvent` + `InstallLogBridge` | ☐ |
 | `drain_stdout_to_log` (\r\n split, ansi strip, noise filter) | `InstallExecutionService.drainStdout` | ☐ |
 | `main.rs::run_in_terminal` suspend/inheritIO/restore/reset | `ui/ExternalRunner` | ☐ |
@@ -196,4 +196,33 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   cursor/`●` movement, table scroll/clamp, hint-bar focus updates) were
   subsequently confirmed by a human running `mise run dev` in an actual
   Windows Terminal window; all rows verified.
+- **Phase 7:** added `AppState.pendingFocus` + `AppState.requestFocus(PanelId)` — controllers
+  (e.g. `SectionsController` Enter-into-MAIN/APPS, `AppsController`/`InstalledController` Esc-back)
+  cannot touch the toolkit's own focus manager directly (it lives on `TuiApp`/`ToolkitRunner`,
+  not on `AppState`), so a controller requests a jump by setting this field and `TuiApp.frameTick()`
+  applies it via `focusPanel()` *before* `syncFocus()` reads the toolkit's focus back — otherwise
+  the very next `syncFocus()` call would immediately overwrite the request with the toolkit's
+  still-unchanged actual focus.
+- **Phase 7:** introduced `service/PackageQueryService` + `PackageQueryServiceImp` (stub body) to
+  wire the `st.search.future`/`st.installed.future` polling + drain plumbing (PLAN.md §6) ahead of
+  Phase 9's real process spawning, per this phase's own instruction ("Async execution stays
+  stubbed until Phase 9, but all wiring goes in now"). `search()` returns one fake row so the
+  search flow is visually verifiable this phase; `listInstalled()` returns an empty list.
+- **Phase 7:** `ConfirmActionPopup`/`Popups.confirm` gained a `warning` line parameter (the Phase 5
+  stub signature didn't have one) to render `"⚠ runs with <mgr>"` per §7.6. `SearchInputPopup`/
+  `CustomInputPopup` switched from the Phase 5 placeholder `StringBuilder` field to the toolkit's
+  real `TextInputState` (+ `Toolkit.handleTextInputKey`), matching `ui/component/Inputs.line`'s
+  actual signature from Phase 5. `SearchInputPopup` now carries an `onSearch` callback (mirroring
+  `ConfirmActionPopup`'s existing `onConfirm` `Runnable`) rather than a query-string field, so the
+  controller that opened it supplies the `PackageQueryService` call as a closure.
+- **Phase 7:** `ui/feature/catalog/CatalogActions` is the single shared home for install/remove
+  confirm-popup construction, search/custom-popup construction, and the installed-list refresh
+  trigger — reused by `SectionsController`, `AppsController`, `SearchController`, and
+  `InstalledController` (all four mutate the one shared `st.catalog.selectedIds`, matching the
+  Rust source's single `app_selected_ids`), per this phase's own "pick one place, DRY" instruction.
+- **Phase 7 verification:** `mvn compile`/`test` pass (44 tests green, incl. 5 new
+  `CommandPlannerTest` cases). `mise run dev` reached `ToolkitApp.run()` (all new beans resolve,
+  `TuiApp.onStart()` runs) and failed only at the same `BackendException: Failed to get input
+  console mode` recorded in Phases 5/6 — not a regression. The interactive DoD rows need a human
+  to run `mise run dev` in an actual Windows Terminal window.
 - (add more here)

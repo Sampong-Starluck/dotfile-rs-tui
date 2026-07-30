@@ -13,6 +13,15 @@ public record OperatingSystem(Kind kind, @Nullable LinuxDistro distro, @Nullable
         };
     }
 
+    /** "windows" | "macos" | "linux" — the key used in apps.json platforms maps (matches {@code OsService.osKey()}). */
+    public String key() {
+        return switch (kind) {
+            case WINDOWS -> "windows";
+            case MACOS -> "macos";
+            case LINUX, UNKNOWN -> "linux";
+        };
+    }
+
     /** "Linux (Arch Linux)" — port of the Rust Display impl. */
     @Override public String toString() {
         if (kind == Kind.LINUX && distro != null) {

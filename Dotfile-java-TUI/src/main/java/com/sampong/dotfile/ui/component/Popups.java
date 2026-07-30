@@ -21,15 +21,16 @@ public final class Popups {
         return dialog(title, content).rounded().borderColor(Color.YELLOW);
     }
 
-    /** Lazygit-style confirm dialog: max 10 items + "... and N more", y/n chip row. */
-    public static DialogElement confirm(String title, List<String> items, String yesLabel, String noLabel) {
+    /** Lazygit-style confirm dialog: warning line, max 10 items + "... and N more", y/n chip row. */
+    public static DialogElement confirm(String title, String warning, List<String> items, String yesLabel, String noLabel) {
         boolean overflow = items.size() > 10;
         int shown = overflow ? 9 : items.size();
-        Element[] lines = new Element[shown + (overflow ? 1 : 0) + 2];
+        Element[] lines = new Element[1 + shown + (overflow ? 1 : 0) + 2];
+        lines[0] = text("⚠ " + warning).yellow();
         for (int i = 0; i < shown; i++) {
-            lines[i] = text(items.get(i));
+            lines[i + 1] = text(items.get(i));
         }
-        int next = shown;
+        int next = 1 + shown;
         if (overflow) {
             lines[next++] = text("... and " + (items.size() - shown) + " more").dim();
         }

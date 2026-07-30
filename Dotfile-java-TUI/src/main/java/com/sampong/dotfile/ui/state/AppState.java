@@ -15,6 +15,13 @@ public class AppState {
     public @Nullable Popup popup = null;
     public boolean running = true;
 
+    /**
+     * A controller-requested programmatic focus jump (e.g. Enter-into-MAIN), applied by
+     * {@code ui.TuiApp} through the toolkit's own focus manager before the next
+     * {@code syncFocus()} — controllers never touch the toolkit focus manager directly.
+     */
+    public @Nullable PanelId pendingFocus = null;
+
     public final PlatformState platform = new PlatformState();
     public final CatalogState catalog = new CatalogState();
     public final SearchState search = new SearchState();
@@ -33,5 +40,10 @@ public class AppState {
         catalog.reset();
         search.reset();
         installed.reset();
+    }
+
+    /** Request a programmatic focus jump; applied by {@code TuiApp} on the next frame. */
+    public void requestFocus(PanelId id) {
+        pendingFocus = id;
     }
 }

@@ -8,9 +8,14 @@ import dev.tamboui.tui.event.KeyEvent;
 import com.sampong.dotfile.base.FeatureView;
 import com.sampong.dotfile.base.HelpPopup;
 import com.sampong.dotfile.base.KeyController;
+import com.sampong.dotfile.model.AppSection;
+import com.sampong.dotfile.model.SearchResult;
+import com.sampong.dotfile.ui.feature.catalog.AppsController;
 import com.sampong.dotfile.ui.feature.catalog.AppsView;
+import com.sampong.dotfile.ui.feature.catalog.CatalogActions;
 import com.sampong.dotfile.ui.feature.catalog.SectionsController;
 import com.sampong.dotfile.ui.feature.catalog.SectionsView;
+import com.sampong.dotfile.ui.feature.installed.InstalledController;
 import com.sampong.dotfile.ui.feature.installed.InstalledView;
 import com.sampong.dotfile.ui.feature.managers.CommandsView;
 import com.sampong.dotfile.ui.feature.managers.ManagersController;
@@ -18,12 +23,16 @@ import com.sampong.dotfile.ui.feature.managers.ManagersView;
 import com.sampong.dotfile.ui.feature.scripts.ShellInfoView;
 import com.sampong.dotfile.ui.feature.scripts.ShellsController;
 import com.sampong.dotfile.ui.feature.scripts.ShellsView;
+import com.sampong.dotfile.ui.feature.search.SearchController;
 import com.sampong.dotfile.ui.feature.search.SearchResultsView;
 import com.sampong.dotfile.ui.feature.status.StatusController;
 import com.sampong.dotfile.ui.feature.status.StatusView;
 import com.sampong.dotfile.model.MainView;
 import com.sampong.dotfile.model.PanelId;
+import com.sampong.dotfile.service.AppCatalogService;
+import com.sampong.dotfile.service.CommandPlanner;
 import com.sampong.dotfile.service.OsService;
+import com.sampong.dotfile.service.PackageQueryService;
 import com.sampong.dotfile.service.PlatformQueryService;
 import com.sampong.dotfile.ui.state.AppState;
 import com.sampong.dotfile.ui.component.HintBar;
@@ -36,6 +45,7 @@ import org.springframework.stereotype.Component;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 import static dev.tamboui.toolkit.Toolkit.stack;
 
@@ -45,7 +55,7 @@ import static dev.tamboui.toolkit.Toolkit.stack;
  * <p>
  * Feature views/controllers are plain classes (not Spring beans, per PLAN.md 5.5) registered
  * once here as an {@code EnumMap} — adding a feature never edits routing internals, only these
- * three registration maps (OCP).
+ * registration maps (OCP).
  */
 @Component
 @Slf4j
@@ -54,10 +64,18 @@ public class TuiApp extends ToolkitApp {
 
     private final OsService osService;
     private final PlatformQueryService platformQueryService;
+    private final AppCatalogService appCatalogService;
+    private final CommandPlanner commandPlanner;
+    private final PackageQueryService packageQueryService;
 
     private final Map<PanelId, FeatureView> panelViews = buildPanelViews();
-    private final Map<PanelId, KeyController> panelControllers = buildPanelControllers();
     private final Map<MainView, FeatureView> mainViews = buildMainViews();
+
+    /** Populated in {@link #onStart()} — construction needs {@code commandPlanner}/{@code packageQueryService},
+     *  which aren't set yet during field-initializer evaluation (they're assigned in the constructor body,
+     *  which runs after field initializers per JLS 12.5). */
+    private final Map<PanelId, KeyController> panelControllers = new EnumMap<>(PanelId.class);
+    private final Map<MainView, KeyController> mainControllers = new EnumMap<>(MainView.class);
 
     private final AppState st = new AppState();
     private boolean platformDetectStarted;
@@ -67,6 +85,15 @@ public class TuiApp extends ToolkitApp {
         long start = System.nanoTime();
         st.platform.os = osService.detect();
         log.debug("startup: OS detect took {}ms", (System.nanoTime() - start) / 1_000_000);
+
+        panelControllers.put(PanelId.STATUS, new StatusController());
+        panelControllers.put(PanelId.MANAGERS, new ManagersController());
+        panelControllers.put(PanelId.SECTIONS, new SectionsController(commandPlanner, packageQueryService));
+        panelControllers.put(PanelId.SHELLS, new ShellsController());
+
+        mainControllers.put(MainView.APPS, new AppsController(commandPlanner, packageQueryService));
+        mainControllers.put(MainView.INSTALLED, new InstalledController(commandPlanner, packageQueryService));
+        mainControllers.put(MainView.SEARCH_RESULTS, new SearchController(commandPlanner, packageQueryService));
     }
 
     @Override
@@ -88,8 +115,9 @@ public class TuiApp extends ToolkitApp {
         return st.popup == null ? withKeys : stack(withKeys, st.popup.view().render(st));
     }
 
-    /** Per-render upkeep: lazy platform detection kickoff/drain, focus sync (PLAN.md 5.6). */
+    /** Per-render upkeep: focus requests, lazy platform/catalog loads, future drains (PLAN.md 5.6/7.1). */
     private void frameTick() {
+        applyPendingFocus();
         syncFocus();
 
         if (!platformDetectStarted) {
@@ -106,6 +134,8 @@ public class TuiApp extends ToolkitApp {
                     .thenRun(this::requestRender);
         }
 
+        catalogTick();
+
         // External-command trampoline (Phase 9); until then, log + clear.
         if (!st.install.runExternal.isEmpty()) {
             log.debug("external run requested (Phase 9 not yet wired): {}", st.install.runExternal);
@@ -113,10 +143,60 @@ public class TuiApp extends ToolkitApp {
         }
     }
 
+    /** Lazy catalog load + search/installed future drains + one-time installed auto-load (PLAN.md 7.1). */
+    private void catalogTick() {
+        if (st.catalog.apps == null) {
+            long start = System.nanoTime();
+            List<AppSection> raw = appCatalogService.readAppsJson();
+            st.catalog.apps = appCatalogService.filterByPlatform(raw, osService.osKey(), st.platform.activeBinary());
+            log.debug("startup: apps.json load+filter took {}ms", (System.nanoTime() - start) / 1_000_000);
+        }
+
+        if (st.search.future != null && st.search.future.isDone()) {
+            st.search.results = joinOrEmpty(st.search.future);
+            st.search.loading = false;
+            st.search.cursor = 0;
+            st.search.future = null;
+            st.mainView = MainView.SEARCH_RESULTS;
+        }
+
+        if (st.installed.future != null && st.installed.future.isDone()) {
+            st.installed.packages = joinOrEmpty(st.installed.future);
+            st.installed.names.clear();
+            st.installed.packages.forEach(pkg -> st.installed.names.add(pkg.name()));
+            st.installed.loading = false;
+            st.installed.cursor = 0;
+            st.installed.future = null;
+        }
+
+        if (!st.installed.autoLoaded && !st.installed.loading) {
+            CatalogActions.refreshInstalled(st, packageQueryService);
+            log.debug("triggered background installed-list load for mgr={}", st.platform.activeBinary());
+        }
+    }
+
+    private static List<SearchResult> joinOrEmpty(CompletableFuture<List<SearchResult>> future) {
+        try {
+            return future.join();
+        } catch (Exception e) {
+            log.warn("query future failed", e);
+            return List.of();
+        }
+    }
+
     /** Wakes the runner so background completions get picked up promptly (ticks also cover this). */
     private void requestRender() {
         if (runner() != null) {
             runner().runOnRenderThread(() -> { });
+        }
+    }
+
+    /** Applies a controller-requested focus jump (e.g. Enter-into-MAIN) through the toolkit's own
+     *  focus manager, before {@link #syncFocus()} reads it back — see {@code AppState.pendingFocus}. */
+    private void applyPendingFocus() {
+        if (st.pendingFocus != null) {
+            focusPanel(st.pendingFocus);
+            st.pendingFocus = null;
         }
     }
 
@@ -175,7 +255,9 @@ public class TuiApp extends ToolkitApp {
             focusPanel(PanelId.values()[digit - 1]);
             return EventResult.HANDLED;
         }
-        KeyController controller = panelControllers.get(st.focused);
+        KeyController controller = st.focused == PanelId.MAIN
+                ? mainControllers.get(st.mainView)
+                : panelControllers.get(st.focused);
         return controller != null ? controller.handleKey(key, st) : EventResult.UNHANDLED;
     }
 
@@ -197,6 +279,8 @@ public class TuiApp extends ToolkitApp {
                     new HintBar.Binding("tab", "cycle"),
                     new HintBar.Binding("j/k", "move"),
                     new HintBar.Binding("space", "select"),
+                    new HintBar.Binding("d", "action"),
+                    new HintBar.Binding("/", "search"),
                     new HintBar.Binding("?", "help"),
                     new HintBar.Binding("q", "quit"));
         };
@@ -208,15 +292,6 @@ public class TuiApp extends ToolkitApp {
         m.put(PanelId.MANAGERS, new ManagersView());
         m.put(PanelId.SECTIONS, new SectionsView());
         m.put(PanelId.SHELLS, new ShellsView());
-        return m;
-    }
-
-    private static Map<PanelId, KeyController> buildPanelControllers() {
-        Map<PanelId, KeyController> m = new EnumMap<>(PanelId.class);
-        m.put(PanelId.STATUS, new StatusController());
-        m.put(PanelId.MANAGERS, new ManagersController());
-        m.put(PanelId.SECTIONS, new SectionsController());
-        m.put(PanelId.SHELLS, new ShellsController());
         return m;
     }
 

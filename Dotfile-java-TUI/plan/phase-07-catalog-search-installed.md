@@ -152,10 +152,20 @@ else → streaming execution (Phase 9)
 
 ## Definition of Done (Phase 7)
 
-- [ ] Sections/Apps navigation + Space selection + `✓ n` badge + `[I]` markers (with stub installed data)
-- [ ] `/` opens search popup; Enter shows (stub) results in main; Space selects; Esc returns to APPS
-- [ ] `l` shows installed view; `r` refresh; Esc restores; red styling on picked rows
-- [ ] `c` custom popup commits ids
-- [ ] `d` opens the confirm popup listing real command strings (e.g. `winget install --id Git.Git -e`); `y` reaches the stub, `n` cancels
-- [ ] Switching manager in panel `[2]` resets and refilters everything
-- [ ] `CommandPlanner` unit tests green; controllers contain no command-string logic (SRP)
+- [ ] Sections/Apps navigation + Space selection + `✓ n` badge + `[I]` markers (with stub installed data) — **pending human run in Windows Terminal, see below**
+- [ ] `/` opens search popup; Enter shows (stub) results in main; Space selects; Esc returns to APPS — **pending human run**
+- [ ] `l` shows installed view; `r` refresh; Esc restores; red styling on picked rows — **pending human run**
+- [ ] `c` custom popup commits ids — **pending human run**
+- [ ] `d` opens the confirm popup listing real command strings (e.g. `winget install --id Git.Git -e`); `y` reaches the stub, `n` cancels — **pending human run**
+- [ ] Switching manager in panel `[2]` resets and refilters everything — **pending human run**
+- [x] `CommandPlanner` unit tests green; controllers contain no command-string logic (SRP)
+
+**Verification note:** `mvn compile`/`test` are green (44 tests incl. 5 new `CommandPlannerTest` cases).
+`mise run dev` was launched from the agent session and reached `ToolkitApp.run()` (all beans,
+including the new `CommandPlanner`/`CommandPlannerImp`, `PackageQueryService`/
+`PackageQueryServiceImp`, and the catalog/search/installed views+controllers, resolve cleanly and
+`TuiApp.onStart()` runs its OS-detect + PM-detect + controller-map setup), failing only at the same
+`BackendException: Failed to get input console mode` recorded in Phases 5/6 — not a regression
+(no `tmux` on this Windows machine; a background-launched process has no real console handle). The
+interactive rows above need a human to run `mise run dev` in an actual Windows Terminal window.
+See FEATURE-PARITY.md deviations for the Phase 7 implementation notes.
