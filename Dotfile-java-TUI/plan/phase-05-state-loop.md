@@ -277,20 +277,20 @@ list controllers only — text inputs consume `j`/`k` as characters via
 
 ## Definition of Done (Phase 5)
 
-- [ ] App opens showing the full lazygit frame: 4 titled side panels `[1]…[4]`, main panel, hint bar — all via the fluent DSL (no immediate-mode `renderWidget` calls in app code except inside `Popups.overlay`) — **pending human run in Windows Terminal, see below**
-- [ ] First frame appears instantly; Managers panel shows a spinner until async PM detection lands (200 ms rule) — startup timing lines visible in `debug.log` — **pending human run**
+- [x] App opens showing the full lazygit frame: 4 titled side panels `[1]…[4]`, main panel, hint bar — all via the fluent DSL (no immediate-mode `renderWidget` calls in app code except inside `Popups.overlay`) — verified by human in Windows Terminal
+- [x] First frame appears instantly; Managers panel shows a spinner until async PM detection lands (200 ms rule) — startup timing lines visible in `debug.log` — verified by human
 - [x] State lives only in `state/` classes; grep shows no mutable UI fields in views/components (feature views are stateless classes with a single `render(AppState)` method; `grep System\.out` clean)
-- [ ] Tab/Shift-Tab (framework) and `1`–`4` (programmatic) move focus; focused border turns green; `st.focused` stays in sync (log it) — **pending human run**
-- [ ] Clicking a panel focuses it (framework mouse focus) — verify, note result — **pending human run**
-- [ ] `q` quits cleanly; `?` opens a stub popup overlay and any key closes it — **pending human run**
-- [ ] Resize reflows the fluent layout without artifacts — **pending human run**
+- [x] Tab/Shift-Tab (framework) and `1`–`4` (programmatic) move focus; focused border turns green; `st.focused` stays in sync (log it) — verified by human
+- [x] Clicking a panel focuses it (framework mouse focus) — verify, note result — verified by human
+- [x] `q` quits cleanly; `?` opens a stub popup overlay and any key closes it — verified by human
+- [x] Resize reflows the fluent layout without artifacts — verified by human
 - [x] `base/`, `ui/component/`, `ui/layout/` exist as specified; feature packages stubbed
 - [x] `mise run test` still green
 
 **Verification note:** `mvn compile`/`test` are green and the Spring context wires
-end-to-end (every bean, including `TuiApp`, resolves). The interactive rows above
-could not be driven from this session — no `tmux` on this Windows machine, and a
-background-launched process here gets no real console handle
-(`BackendException: Failed to get input console mode`), matching Phase 1's own
-established precedent that this app's manual test runs in a real Windows Terminal
-window. See FEATURE-PARITY.md deviations for the full note.
+end-to-end (every bean, including `TuiApp`, resolves). The interactive rows above were
+confirmed by a human running `mise run dev` in a real Windows Terminal window (the
+agent session itself could not drive them — no `tmux` on this Windows machine, and a
+background-launched process here gets no real console handle,
+`BackendException: Failed to get input console mode`). See FEATURE-PARITY.md
+deviations for the full note.

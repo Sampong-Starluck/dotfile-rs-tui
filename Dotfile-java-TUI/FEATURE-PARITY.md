@@ -165,12 +165,13 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 - **Phase 5 verification:** `mvn compile`/`test` pass and Spring context
   wiring succeeds end-to-end (all beans, incl. `TuiApp`, resolve cleanly).
   The full-screen Panama backend itself could not be interactively driven
-  from this session — there is no `tmux` on this Windows machine, and a
+  from the agent session — there is no `tmux` on this Windows machine, and a
   background-launched process here has no real console handle
   (`BackendException: Failed to get input console mode`, the same failure
   any TUI would hit launched this way). This matches Phase 1's own
   precedent: the Definition of Done's focus/spinner/resize/popup/quit items
-  need a human to run `mise run dev` in an actual Windows Terminal window.
+  needed a human to run `mise run dev` in an actual Windows Terminal window —
+  since confirmed by a human run; all rows verified.
 - **Phase 6:** width-dependent degrade rules (Managers panel `binary()` vs
   `label()` + description at ≥30 cols; Commands table's 45%/15-col split and
   the `w<20 || h<4` "terminal too small" guard) need the real rendered
@@ -188,10 +189,11 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   a new `FeatureView.title(AppState)` default method, since that part only
   depends on state, not area.
 - **Phase 6 verification:** `mvn compile`/`test` pass. `mise run dev` was
-  launched from this session and reached `ToolkitApp.run()` (all beans,
+  launched from the agent session and reached `ToolkitApp.run()` (all beans,
   incl. the new `Responsive`-based views, resolve cleanly), failing only at
   the same `BackendException: Failed to get input console mode` recorded in
   Phase 5 — not a regression. The interactive DoD rows (spinner timing,
-  cursor/`●` movement, table scroll/clamp, hint-bar focus updates) need a
-  human to run `mise run dev` in an actual Windows Terminal window.
+  cursor/`●` movement, table scroll/clamp, hint-bar focus updates) were
+  subsequently confirmed by a human running `mise run dev` in an actual
+  Windows Terminal window; all rows verified.
 - (add more here)

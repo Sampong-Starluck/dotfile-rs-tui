@@ -2,3 +2,5 @@ target/
 debug.log
 api-*.txt
 .mise.local.toml
+.idea/
+.vscode/
