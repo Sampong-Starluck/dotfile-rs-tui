@@ -2,18 +2,20 @@ package com.sampong.dotfile.ui.layout;
 
 import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.elements.Column;
-import dev.tamboui.toolkit.elements.Row;
+import com.sampong.dotfile.ui.component.Responsive;
 
 import static dev.tamboui.toolkit.Toolkit.column;
 import static dev.tamboui.toolkit.Toolkit.row;
 
 /**
- * Composes the lazygit frame (PLAN.md 5) as one fluent tree — no Rect math.
+ * Composes the lazygit frame (PLAN.md 5) as one fluent tree.
  * <p>
- * Deviation: the side column uses a fixed {@code .min(24)} floor rather than a true
- * {@code min(24)/max(34)} clamp — the Cassowary {@code Constraint} model has no
- * composite min+max for a single slot, and computing the clamp from the terminal
- * width would mean the Rect math Rule #1 tells us to avoid. See FEATURE-PARITY.md.
+ * The side column's {@code min(24)/max(34)} clamp (PLAN.md 5) needs the real terminal
+ * width, which isn't known while the tree is being built — Cassowary's {@code Min}
+ * constraint alone competes for leftover space like {@code Fill} and has no upper
+ * bound, so on a wide terminal it split roughly 50/50 with the main panel instead of
+ * staying near a third. {@code body} is wrapped in {@link Responsive} so the clamp is
+ * computed from the real area once it's known, at render time.
  */
 public final class LazygitLayout {
     private LazygitLayout() {
@@ -22,16 +24,18 @@ public final class LazygitLayout {
     public static Column frame(Element status, Element managers, Element sections,
                                 Element shells, Element main, Element hints,
                                 int pmCount, int shellCount) {
-        Column side = column(
-                column(status).length(3),
-                column(managers).length(clamp(pmCount, 1, 6) + 2),
-                column(sections).fill(),
-                column(shells).length(clamp(shellCount, 1, 7) + 2)
-        ).min(24);
+        Element body = Responsive.of(area -> {
+            Column side = column(
+                    column(status).length(3),
+                    column(managers).length(clamp(pmCount, 1, 6) + 2),
+                    column(sections).fill(),
+                    column(shells).length(clamp(shellCount, 1, 7) + 2)
+            ).length(clamp(area.width() / 3, 24, 34));
 
-        Row body = row(side, column(main).fill());
+            return row(side, column(main).fill());
+        });
 
-        return column(body.fill(), column(hints).length(1));
+        return column(body, column(hints).length(1));
     }
 
     private static int clamp(int value, int min, int max) {

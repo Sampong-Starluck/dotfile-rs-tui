@@ -140,11 +140,21 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   no `module-info.java` (unnamed module), and adding JPMS to a Spring Boot
   fat jar (interacting with Phase 11's native-image) was judged out of scope
   for this phase. Each record documents this in its Javadoc.
-- **Phase 5:** `LazygitLayout`'s side column uses a fixed `.min(24)` floor,
-  not the spec'd `min(24)/max(34)` clamp — TamboUI's Cassowary `Constraint`
-  has no composite min+max for a single layout slot, and computing the clamp
-  from the live terminal width would mean the Rect math Rule #1 tells us to
-  avoid. Side panels can grow past 34 cols on wide terminals.
+- **Phase 5 (superseded — see Phase 6 note below):** `LazygitLayout`'s side
+  column originally used a fixed `.min(24)` floor with no upper bound.
+  Human verification of Phase 6 (screenshot on a wide terminal) showed this
+  wasn't a minor overflow as assumed: Cassowary's `Min` constraint competes
+  for leftover space the same way `Fill` does, so the side column and the
+  main panel split roughly 50/50 instead of the side column staying near a
+  third. Fixed in Phase 6 — see below.
+- **Phase 6:** fixed the Phase 5 side-column-width issue above: `LazygitLayout`
+  now wraps `body` in `ui/component/Responsive` and computes an explicit
+  `.length(clamp(area.width() / 3, 24, 34))` from the real body area at
+  render time, giving the true `min(24)/max(34)` clamp PLAN.md §5 specifies.
+  `Responsive` also now delegates `id()`/`isFocusable()`/key & mouse event
+  handlers/`renderedArea()` to its last-built child (matching the toolkit's
+  own `LazyElement`), since it now sits at the frame root rather than only
+  inside leaf panels.
 - **Phase 5:** `PackageManagerService.detect()` (blocking PATH probes) is
   wrapped by a new `service/PlatformQueryService` (`@Async` `CompletableFuture`)
   — not itself in PLAN.md's Phase 3 file, but required by §5.6's
