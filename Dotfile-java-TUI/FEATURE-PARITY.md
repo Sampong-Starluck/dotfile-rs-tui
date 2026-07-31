@@ -80,7 +80,7 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | (new) explicit confirm before running commands | `ConfirmActionPopup` (lazygit-style) | ☑ |
 | sudo password modal | `SudoPopup` (masked input added) | ☐ |
 | install modal: colored log, autoscroll, stdin input | `InstallLogPopup` + `LogView` | ☐ |
-| scripts tab (shells list, info, log, all keys) | `feature/scripts/` ShellsPanel + ShellInfoView + ScriptsController | ☐ |
+| scripts tab (shells list, info, log, all keys) | `feature/scripts/` ShellsPanel + ShellInfoView + ScriptsController | ☐ (Phase 8) |
 
 ## Async & external (Phase 9 — Spring-native)
 
@@ -234,4 +234,35 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   terminals too narrow to fit even a full line. `ManagersView.panelHeight(pmCount)` (2 lines per
   visible row + border) replaces the old 1-line-per-row height calc in `LazygitLayout`. PLAN.md
   §5's column-width spec updated to match.
+- **Phase 7 (human verification, post-review):** the first live `mise run dev` run in a real
+  Windows Terminal surfaced three pre-existing bugs, none introduced by Phase 7's own diff:
+  1. **Panel-collapse layout bug.** `LazygitLayout` sized each panel with `column(panel).fill()`/
+     `.length(n)` — a throwaway wrapping `Column` used only to attach a constraint. That wrapper
+     reports the constraint correctly to *its own* parent, but then independently re-derives a
+     constraint for its single child via `Column.renderContent`'s `child.constraint() == null`
+     fallback, which queries `child.preferredSize()`. A bordered `Panel` always reports a real,
+     content-sized `preferredSize()` (never "unknown"), so the panel got pinned to
+     `Constraint.length(contentHeight)` instead of stretching — worst on `[3]-Sections` and `MAIN`
+     (both `.fill()`), which rendered as a small bordered box with a large blank, borderless gap
+     filling the rest of their allocated slot, even on a maximized terminal. Fixed by adding
+     `ui/component/Sized` (constraint exposed directly + a pass-through `render` that hands the
+     whole given area straight to the child, skipping the inner re-derivation) and using it for
+     every panel slot in `LazygitLayout`.
+  2. **Catalog/installed startup race.** `TuiApp.catalogTick()`'s one-time `apps.json` load (and
+     the installed-list auto-load) ran on the very first frame, before the async
+     `PlatformQueryService.detectManagers()` future resolved — filtering against
+     `activeBinary()`'s `"unknown"` placeholder and permanently locking `st.catalog.apps` empty
+     (`[3]-Sections` showed "no apps for winget" forever; nothing re-triggers the load afterward,
+     unlike an explicit manager switch, which goes through `AppState#activateManager`'s
+     `catalog.reset()`). Fixed by gating both loads on `!st.platform.detecting`.
+  3. **Popup width bug (framework).** `dev.tamboui.toolkit.elements.DialogElement` has two
+     disagreeing width calculations: `preferredSize()` correctly measures the widest child, but
+     nothing reads it — the dialog's `constraint()` unconditionally returns `Constraint.fill()`,
+     and the width actually used at render time (`calculateWidth`) ignores children completely
+     (title length vs. a 20-col floor only). The search popup's hint line clipped mid-word as a
+     result. Can't patch the library; worked around in `ui/component/Popups` by pinning each
+     dialog's `fixedWidth` from its own (correct, otherwise-dead) `preferredSize()` call —
+     applies uniformly to every popup (search, custom-id, sudo, help, confirm, install log).
+
+  All three fixed, human re-verified every Phase 7 DoD row afterward (`plan/phase-07-catalog-search-installed.md`).
 - (add more here)

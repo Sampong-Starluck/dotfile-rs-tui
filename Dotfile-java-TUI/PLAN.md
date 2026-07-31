@@ -300,6 +300,7 @@ queue draining into it.
 | 9 | `plan/phase-09-async-install.md` | @Async workers, install/remove streaming, sudo, suspend-TUI external run |
 | 10 | `plan/phase-10-polish-packaging.md` | Help popup, key-hint bar, fat jar, acceptance run |
 | 11 | `plan/phase-11-native-image.md` | GraalVM native-image build (best-effort on this machine) |
+| 12 | `plan/phase-12-improvement.md` | **Post-parity improvement, backlog** — MAIN-panel live detail: streaming command log + download progress bar (percentage, current/total size). No Rust source; not scoped yet |
 
 `FEATURE-PARITY.md` maps every Rust behavior to its Java home — tick as you go.
 

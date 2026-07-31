@@ -143,9 +143,13 @@ public class TuiApp extends ToolkitApp {
         }
     }
 
-    /** Lazy catalog load + search/installed future drains + one-time installed auto-load (PLAN.md 7.1). */
+    /** Lazy catalog load + search/installed future drains + one-time installed auto-load (PLAN.md 7.1).
+     *  The load waits out platform detection: filtering earlier would lock {@code st.catalog.apps} in
+     *  against {@code activeBinary()}'s "unknown" placeholder, and nothing re-triggers it afterward
+     *  (unlike an explicit manager switch, which goes through {@code AppState#activateManager}'s
+     *  {@code catalog.reset()}). */
     private void catalogTick() {
-        if (st.catalog.apps == null) {
+        if (st.catalog.apps == null && !st.platform.detecting) {
             long start = System.nanoTime();
             List<AppSection> raw = appCatalogService.readAppsJson();
             st.catalog.apps = appCatalogService.filterByPlatform(raw, osService.osKey(), st.platform.activeBinary());
@@ -169,7 +173,7 @@ public class TuiApp extends ToolkitApp {
             st.installed.future = null;
         }
 
-        if (!st.installed.autoLoaded && !st.installed.loading) {
+        if (!st.installed.autoLoaded && !st.installed.loading && !st.platform.detecting) {
             CatalogActions.refreshInstalled(st, packageQueryService);
             log.debug("triggered background installed-list load for mgr={}", st.platform.activeBinary());
         }

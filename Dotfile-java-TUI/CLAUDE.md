@@ -37,28 +37,37 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-07 (implementation complete; interactive Definition of
-  Done rows pending a human manual run — see below)** (next: verify phase-07
-  interactively, then phase-08)
-- Completed phases: phase-01, phase-02, phase-03, phase-04, phase-05, phase-06
-  (all Definition of Done rows, incl. the interactive ones, confirmed by a
-  human running `mise run dev` in a real Windows Terminal window)
+- Current phase: **phase-08** (next: implement `plan/phase-08-script-tab.md`)
+- Completed phases: phase-01 through phase-07 (all Definition of Done rows,
+  incl. the interactive ones, confirmed by a human running `mise run dev` in
+  a real Windows Terminal window)
 - Phase 7: `mvn compile`/`test` green (44 tests, incl. 5 new `CommandPlannerTest`
-  cases). `mise run dev` reaches `ToolkitApp.run()` (all new beans — `CommandPlanner`/
-  `CommandPlannerImp`, `PackageQueryService`/`PackageQueryServiceImp`, the catalog/
-  search/installed views+controllers — resolve cleanly; `TuiApp.onStart()` runs)
-  and fails only at the same `BackendException: Failed to get input console mode`
-  recorded for Phases 5/6 — not a regression. **Please run `mise run dev` yourself
-  and confirm the checklist in `plan/phase-07-catalog-search-installed.md`** before
-  phase-08 starts. Deviations (`AppState.pendingFocus`/`requestFocus` for
+  cases). A human ran `mise run dev` in a real Windows Terminal and walked
+  every interactive DoD row in `plan/phase-07-catalog-search-installed.md`.
+  That first live run surfaced 3 real, pre-existing bugs (not introduced by
+  Phase 7's own diff) — a panel-collapse layout bug (`column(panel).fill()`
+  wrappers re-derived a content-sized constraint for their single child
+  instead of stretching it; fixed with new `ui/component/Sized`), a
+  catalog/installed startup race (`st.catalog.apps` filtered against
+  `activeBinary()`'s `"unknown"` placeholder before async manager detection
+  landed, permanently empty; fixed by gating on `!st.platform.detecting`),
+  and a `DialogElement` popup-width bug in the TamboUI framework itself
+  (worked around in `ui/component/Popups`). All three fixed, re-verified
+  green. Full root-cause writeup in FEATURE-PARITY.md's Phase 7 deviations.
+  Other deviations (`AppState.pendingFocus`/`requestFocus` for
   controller-requested focus jumps applied by `TuiApp` before `syncFocus()`;
   `PackageQueryService` stub wiring the future/drain plumbing ahead of Phase 9's
-  real process spawning; `ConfirmActionPopup`/`Popups.confirm` gained a `warning`
+  real process spawning — confirmed expected/by-design after human review, not
+  a bug; `ConfirmActionPopup`/`Popups.confirm` gained a `warning`
   line; `SearchInputPopup`/`CustomInputPopup` switched from `StringBuilder` to the
   toolkit's real `TextInputState`; `ui/feature/catalog/CatalogActions` as the
   single shared home for confirm/search/custom popup construction + installed
   refresh, reused by all four catalog-adjacent controllers) are logged in
   FEATURE-PARITY.md.
+- Backlog (not a phase in sequence): `plan/phase-12-improvement.md` — MAIN-panel
+  live detail (streaming command log + download progress bar), requested by the
+  user during Phase 7 verification, explicitly deferred as a post-parity
+  improvement. Not scoped; revisit after Phase 11.
 - Phase 6: `mvn compile`/`test` green; `mise run dev` reaches `ToolkitApp.run()`
   (all beans, incl. the new `ui/component/Responsive` and its use in
   `ManagersView`/`CommandsView`, resolve cleanly) and, when launched from the

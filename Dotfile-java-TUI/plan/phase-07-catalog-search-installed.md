@@ -152,20 +152,30 @@ else → streaming execution (Phase 9)
 
 ## Definition of Done (Phase 7)
 
-- [ ] Sections/Apps navigation + Space selection + `✓ n` badge + `[I]` markers (with stub installed data) — **pending human run in Windows Terminal, see below**
-- [ ] `/` opens search popup; Enter shows (stub) results in main; Space selects; Esc returns to APPS — **pending human run**
-- [ ] `l` shows installed view; `r` refresh; Esc restores; red styling on picked rows — **pending human run**
-- [ ] `c` custom popup commits ids — **pending human run**
-- [ ] `d` opens the confirm popup listing real command strings (e.g. `winget install --id Git.Git -e`); `y` reaches the stub, `n` cancels — **pending human run**
-- [ ] Switching manager in panel `[2]` resets and refilters everything — **pending human run**
+- [x] Sections/Apps navigation + Space selection + `✓ n` badge + `[I]` markers (with stub installed data) — verified by human
+- [x] `/` opens search popup; Enter shows (stub) results in main; Space selects; Esc returns to APPS — verified by human
+- [x] `l` shows installed view; `r` refresh; Esc restores; red styling on picked rows — verified by human
+- [x] `c` custom popup commits ids — verified by human
+- [x] `d` opens the confirm popup listing real command strings (e.g. `winget install --id Git.Git -e`); `y` reaches the stub, `n` cancels — verified by human
+- [x] Switching manager in panel `[2]` resets and refilters everything — verified by human
 - [x] `CommandPlanner` unit tests green; controllers contain no command-string logic (SRP)
 
 **Verification note:** `mvn compile`/`test` are green (44 tests incl. 5 new `CommandPlannerTest` cases).
-`mise run dev` was launched from the agent session and reached `ToolkitApp.run()` (all beans,
-including the new `CommandPlanner`/`CommandPlannerImp`, `PackageQueryService`/
-`PackageQueryServiceImp`, and the catalog/search/installed views+controllers, resolve cleanly and
-`TuiApp.onStart()` runs its OS-detect + PM-detect + controller-map setup), failing only at the same
-`BackendException: Failed to get input console mode` recorded in Phases 5/6 — not a regression
-(no `tmux` on this Windows machine; a background-launched process has no real console handle). The
-interactive rows above need a human to run `mise run dev` in an actual Windows Terminal window.
-See FEATURE-PARITY.md deviations for the Phase 7 implementation notes.
+A human ran `mise run dev` in a real Windows Terminal window and walked the interactive rows above.
+That first live run surfaced three real bugs (all pre-existing, not introduced by this phase's own
+diff — see FEATURE-PARITY.md deviations for root causes and fixes):
+
+1. Panels sized via `column(panel).fill()`/`.length(n)` collapsed to their content's height instead
+   of filling their slot (worst on `[3]-Sections` and `MAIN`, which looked empty/tiny even on a
+   maximized terminal) — fixed with a new `ui/component/Sized` pass-through wrapper.
+2. `st.catalog.apps` (and the installed-list auto-load) filtered against `activeBinary()`'s
+   `"unknown"` placeholder on the very first frame, before async manager detection landed, and
+   nothing re-triggered it afterward — Sections showed "no apps for winget" forever. Fixed by
+   gating both on `!st.platform.detecting`.
+3. `DialogElement`'s actual render-time width calculation ignores its children entirely (title vs.
+   a 20-col floor only), clipping the search popup's hint line. Fixed by pinning `Popups`'
+   dialogs' `fixedWidth` from the framework's own (correct, but otherwise-unused) `preferredSize()`.
+
+After those three fixes, the human re-ran the checklist and confirmed every row above. The one-fake-row
+search result and empty `[I]` markers are expected Phase 7 stub behavior (Phase 9 wires the real
+process spawning), not bugs.
