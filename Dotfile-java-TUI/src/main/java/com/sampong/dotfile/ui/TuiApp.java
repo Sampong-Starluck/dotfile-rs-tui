@@ -15,6 +15,8 @@ import com.sampong.dotfile.ui.feature.catalog.AppsView;
 import com.sampong.dotfile.ui.feature.catalog.CatalogActions;
 import com.sampong.dotfile.ui.feature.catalog.SectionsController;
 import com.sampong.dotfile.ui.feature.catalog.SectionsView;
+import com.sampong.dotfile.ui.feature.install.InstallController;
+import com.sampong.dotfile.ui.feature.install.InstallLogBridge;
 import com.sampong.dotfile.ui.feature.installed.InstalledController;
 import com.sampong.dotfile.ui.feature.installed.InstalledView;
 import com.sampong.dotfile.ui.feature.managers.CommandsView;
@@ -31,10 +33,12 @@ import com.sampong.dotfile.model.MainView;
 import com.sampong.dotfile.model.PanelId;
 import com.sampong.dotfile.service.AppCatalogService;
 import com.sampong.dotfile.service.CommandPlanner;
+import com.sampong.dotfile.service.InstallExecutionService;
 import com.sampong.dotfile.service.OsService;
 import com.sampong.dotfile.service.PackageQueryService;
 import com.sampong.dotfile.service.PlatformQueryService;
 import com.sampong.dotfile.service.ScriptService;
+import com.sampong.dotfile.service.SystemService;
 import com.sampong.dotfile.ui.state.AppState;
 import com.sampong.dotfile.ui.component.HintBar;
 import com.sampong.dotfile.ui.component.Panels;
@@ -69,6 +73,9 @@ public class TuiApp extends ToolkitApp {
     private final CommandPlanner commandPlanner;
     private final PackageQueryService packageQueryService;
     private final ScriptService scriptService;
+    private final SystemService systemService;
+    private final InstallExecutionService installExecutionService;
+    private final InstallLogBridge installLogBridge;
 
     private final Map<PanelId, FeatureView> panelViews = buildPanelViews();
     private final Map<MainView, FeatureView> mainViews = buildMainViews();
@@ -82,20 +89,52 @@ public class TuiApp extends ToolkitApp {
     private final AppState st = new AppState();
     private boolean platformDetectStarted;
 
+    /** Set when {@link #frameTick()} sees a queued external command and calls {@link #quit()};
+     *  {@link #run()} checks it after the runner returns to decide whether to hand off to
+     *  {@link ExternalRunner} and loop, or whether this was a real quit (Phase 9 §9.5). */
+    private boolean externalRunPending;
+
     @Override
     protected void onStart() {
         long start = System.nanoTime();
         st.platform.os = osService.detect();
         log.debug("startup: OS detect took {}ms", (System.nanoTime() - start) / 1_000_000);
 
+        installLogBridge.setRenderWaker(this::requestRender);
+        InstallController installController = new InstallController(
+                systemService, installExecutionService, installLogBridge, commandPlanner, packageQueryService);
+
         panelControllers.put(PanelId.STATUS, new StatusController());
         panelControllers.put(PanelId.MANAGERS, new ManagersController());
-        panelControllers.put(PanelId.SECTIONS, new SectionsController(commandPlanner, packageQueryService));
+        panelControllers.put(PanelId.SECTIONS, new SectionsController(commandPlanner, packageQueryService, installController));
         panelControllers.put(PanelId.SHELLS, new ScriptsController(scriptService));
 
-        mainControllers.put(MainView.APPS, new AppsController(commandPlanner, packageQueryService));
-        mainControllers.put(MainView.INSTALLED, new InstalledController(commandPlanner, packageQueryService));
-        mainControllers.put(MainView.SEARCH_RESULTS, new SearchController(commandPlanner, packageQueryService));
+        mainControllers.put(MainView.APPS, new AppsController(commandPlanner, packageQueryService, installController));
+        mainControllers.put(MainView.INSTALLED, new InstalledController(commandPlanner, packageQueryService, installController));
+        mainControllers.put(MainView.SEARCH_RESULTS, new SearchController(commandPlanner, packageQueryService, installController));
+    }
+
+    /**
+     * Overridden (not the inherited {@code ToolkitApp.run()}) to implement the suspend-TUI
+     * trampoline (PLAN.md phase-09 §9.5): {@code ToolkitRunner} exposes no pause/resume API, so
+     * closing and recreating it is the correct implementation (see phase-09 plan note). Each
+     * {@code super.run()} call owns one {@code ToolkitRunner} lifecycle end-to-end (including a
+     * fresh {@code onStart()}, which is idempotent — {@link #platformDetectStarted} guards the
+     * one-shot async platform detect from re-firing); when it returns because {@link
+     * #frameTick()} requested an external run, the terminal is already fully restored, so {@link
+     * ExternalRunner} can safely use {@code System.out}/{@code System.in} before the loop opens a
+     * new runner.
+     */
+    @Override
+    public void run() throws Exception {
+        while (true) {
+            super.run();
+            if (!externalRunPending) {
+                return;
+            }
+            externalRunPending = false;
+            ExternalRunner.run(st);
+        }
     }
 
     @Override
@@ -138,11 +177,26 @@ public class TuiApp extends ToolkitApp {
 
         catalogTick();
         scriptsTick();
+        drainInstallLog();
 
-        // External-command trampoline (Phase 9); until then, log + clear.
-        if (!st.install.runExternal.isEmpty()) {
-            log.debug("external run requested (Phase 9 not yet wired): {}", st.install.runExternal);
-            st.install.runExternal.clear();
+        // External-command trampoline (Phase 9 §9.5): quit() unwinds this ToolkitRunner cleanly;
+        // run()'s override hands off to ExternalRunner once the terminal is fully restored.
+        if (!st.install.runExternal.isEmpty() && !externalRunPending) {
+            externalRunPending = true;
+            quit();
+        }
+    }
+
+    /** Drains streamed install/remove log lines published via {@code InstallLogEvent} ->
+     *  {@code InstallLogBridge} into the state the popup renders (PLAN.md §6/§9.2). */
+    private void drainInstallLog() {
+        var queue = st.install.logQueue;
+        if (queue == null) {
+            return;
+        }
+        String line;
+        while ((line = queue.poll()) != null) {
+            st.install.log.add(line);
         }
     }
 

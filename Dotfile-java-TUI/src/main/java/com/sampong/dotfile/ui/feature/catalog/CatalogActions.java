@@ -5,12 +5,13 @@ import com.sampong.dotfile.base.ConfirmActionPopup;
 import com.sampong.dotfile.base.CustomInputPopup;
 import com.sampong.dotfile.base.SearchInputPopup;
 import com.sampong.dotfile.model.AppSection;
+import com.sampong.dotfile.model.InstallKind;
 import com.sampong.dotfile.model.MainView;
 import com.sampong.dotfile.model.PanelId;
 import com.sampong.dotfile.service.CommandPlanner;
 import com.sampong.dotfile.service.PackageQueryService;
+import com.sampong.dotfile.ui.feature.install.InstallController;
 import com.sampong.dotfile.ui.state.AppState;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,13 +21,12 @@ import java.util.List;
  * Apps, Search results, Installed) — one place owns confirm-popup construction, custom/search
  * popup construction, and the installed-list refresh trigger (SRP/DRY, PLAN.md §7).
  */
-@Slf4j
 public final class CatalogActions {
     private CatalogActions() {
     }
 
     /** {@code d} on Sections/Apps/Search: build the install confirm popup; no-op if nothing selected. */
-    public static void openInstallConfirm(AppState st, CommandPlanner commandPlanner) {
+    public static void openInstallConfirm(AppState st, CommandPlanner commandPlanner, InstallController installController) {
         String mgr = st.platform.activeBinary();
         List<AppSection> apps = st.catalog.apps != null ? st.catalog.apps : List.of();
         List<String> commands = commandPlanner.buildInstallCommands(apps, st.catalog.selectedIds, mgr);
@@ -37,11 +37,11 @@ public final class CatalogActions {
                 "Install " + commands.size() + " package(s)?",
                 "runs with " + mgr,
                 commands,
-                () -> log.info("stub install (Phase 9 wires InstallController): {}", commands));
+                () -> installController.start(st, InstallKind.INSTALL, commands));
     }
 
     /** {@code d} on Installed: build the remove confirm popup; no-op if nothing selected. */
-    public static void openRemoveConfirm(AppState st, CommandPlanner commandPlanner) {
+    public static void openRemoveConfirm(AppState st, CommandPlanner commandPlanner, InstallController installController) {
         String mgr = st.platform.activeBinary();
         List<String> commands = commandPlanner.buildRemoveCommands(st.catalog.selectedIds, mgr);
         if (commands.isEmpty()) {
@@ -51,7 +51,7 @@ public final class CatalogActions {
                 "Remove " + commands.size() + " package(s)?",
                 "runs with " + mgr,
                 commands,
-                () -> log.info("stub remove (Phase 9 wires InstallController): {}", commands));
+                () -> installController.start(st, InstallKind.REMOVE, commands));
     }
 
     /** {@code /}: open the search popup pre-filled with the last query. */

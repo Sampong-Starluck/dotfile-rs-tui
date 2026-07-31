@@ -37,20 +37,45 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-08 (implementation complete; interactive Definition
+- Current phase: **phase-09 (implementation complete; interactive Definition
   of Done rows pending a human manual run — see below)** (next: verify
-  phase-08 interactively, then phase-09)
-- Completed phases: phase-01 through phase-07 (all Definition of Done rows,
+  phase-09 interactively, then phase-10)
+- Completed phases: phase-01 through phase-08 (all Definition of Done rows,
   incl. the interactive ones, confirmed by a human running `mise run dev` in
   a real Windows Terminal window)
+- Phase 9: `mvn compile`/`test` green (50 tests, unchanged — this phase's DoD
+  is entirely live process-spawning/interactive behavior, not new unit
+  tests). `mise exec -- mvn -q spring-boot:run` reached the same
+  `ToolkitApp.run()` → backend-creation point as every prior phase (all new
+  beans — `InstallExecutionService`/`InstallExecutionServiceImp`,
+  `InstallLogBridge`, `TuiApp`'s new `systemService`/`installExecutionService`/
+  `installLogBridge` deps — resolve cleanly; `TuiApp.onStart()` builds
+  `InstallController` and wires it into every catalog-adjacent controller)
+  and failed only at the same `BackendException: Failed to get input console
+  mode` recorded since Phase 5 — not a regression. **Please run `mise run
+  dev` yourself (with real package managers installed — winget at minimum,
+  choco for the suspend/resume row) and confirm the checklist in
+  `plan/phase-09-async-install.md`** before phase-10 starts. Deviations
+  (`TuiApp` now overrides `ToolkitApp.run()` with a close-and-recreate loop
+  around the `ToolkitRunner` since the 0.4.0 API has no pause/resume, handing
+  off to the new `ui/ExternalRunner` between lifecycles once the terminal is
+  already restored; `InstallLogBridge`'s render-waker is setter-injected by
+  `TuiApp.onStart()` instead of constructor-injected, to avoid a `TuiApp <->
+  InstallLogBridge` circular bean dependency; `SudoPopup`'s password field
+  uses the toolkit's real `TextInputState` instead of the Phase-7 stub's raw
+  `StringBuilder`, reusing `Toolkit.handleTextInputKey` like
+  `CustomInputPopup`/`SearchInputPopup` already do) are logged in
+  FEATURE-PARITY.md.
 - Phase 8: `mvn compile`/`test` green (50 tests, incl. 6 new
   `ScriptServiceImpTest` cases). `mise exec -- mvn -q spring-boot:run` reached
   `ToolkitApp.run()` (all new beans — `ScriptService`/`ScriptServiceImp`,
   `TuiApp`'s new `scriptService` dep, `ScriptsController` — resolve cleanly;
   `TuiApp.onStart()` runs) and failed only at the same `BackendException:
   Failed to get input console mode` recorded since Phase 5 — not a
-  regression. **Please run `mise run dev` yourself and confirm the checklist
-  in `plan/phase-08-script-tab.md`** before phase-09 starts. Deviations
+  regression. A human has since run `mise run dev` in a real Windows Terminal
+  and confirmed every checklist row in `plan/phase-08-script-tab.md`
+  (Shells panel listing, deploy, idempotent re-deploy, undeploy, set/clear
+  primary shell). Deviations
   (`model/ShellStatus` widened with pure `binary`/`profilePath`/`sourceHint`
   fields, computed once in `ScriptServiceImp.loadShellStatuses()`, so
   `ShellInfoView` stays zero-service-call; lazy shells load lives in a new

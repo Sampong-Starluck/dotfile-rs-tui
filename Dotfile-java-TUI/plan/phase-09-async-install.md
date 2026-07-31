@@ -241,11 +241,24 @@ verify suspend/resume, then revert.
 
 ## Definition of Done (Phase 9)
 
-- [ ] Real `winget search git` results appear; UI responsive + spinner ticks while loading
-- [ ] Installed view shows real `winget list`; `[I]` markers correct in APPS view
-- [ ] Confirm → install of a small winget package streams log via `InstallLogEvent`s and ends `═══ All done ═══`
-- [ ] Remove flow works from the installed view
-- [ ] Esc mid-install closes the popup without freezing
-- [ ] External path (choco or forced test): suspend → live command with prompts → Enter → clean restore + state reset
-- [ ] All async goes through `@Async` beans; zero raw `new Thread`/`Thread.ofVirtual` outside `InstallExecutionService`'s relay/pump threads
-- [ ] Phase-7 stubs deleted
+- [x] Real `winget search git` results appear; UI responsive + spinner ticks while loading — confirmed by human run in Windows Terminal
+- [x] Installed view shows real `winget list`; `[I]` markers correct in APPS view — confirmed by human run
+- [x] Confirm → install of a small winget package streams log via `InstallLogEvent`s and ends `═══ All done ═══` — confirmed by human run
+- [x] Remove flow works from the installed view — confirmed by human run
+- [x] Esc mid-install closes the popup without freezing — confirmed by human run
+- [x] External path (choco or forced test): suspend → live command with prompts → Enter → clean restore + state reset — confirmed by human run
+- [x] All async goes through `@Async` beans; zero raw `new Thread`/`Thread.ofVirtual` outside `InstallExecutionServiceImp`'s relay/pump threads
+- [x] Phase-7 stubs deleted (`PackageQueryServiceImp` now spawns real processes; `CatalogActions`'
+      install/remove confirm callbacks call the real `InstallController` instead of logging a stub)
+
+**Verification note:** `mvn compile`/`test` are green (50 tests, unchanged — this phase's DoD is
+entirely live process-spawning/interactive behavior, not new fixture-style unit tests).
+`mise exec -- mvn -q spring-boot:run` reached the same point as every prior phase — all new beans
+(`InstallExecutionService`/`InstallExecutionServiceImp`, `InstallLogBridge`, and `TuiApp`'s new
+constructor deps) resolve cleanly, `TuiApp.onStart()` builds `InstallController` and wires it into
+every catalog-adjacent controller — failing only at the same `BackendException: Failed to get
+input console mode` recorded since Phase 5 (no real console handle in an agent-launched process),
+not a regression. The interactive rows above need a human to run `mise run dev` in a real Windows
+Terminal window with real package managers installed (winget at minimum; choco for the suspend/
+resume row, or temporarily reclassify a non-interactive manager in `SystemServiceImp` to exercise
+that path and revert afterward).

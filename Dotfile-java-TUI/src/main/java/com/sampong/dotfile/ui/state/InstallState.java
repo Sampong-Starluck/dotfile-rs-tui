@@ -1,5 +1,6 @@
 package com.sampong.dotfile.ui.state;
 
+import com.sampong.dotfile.model.InstallKind;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -9,6 +10,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 /** Streaming install/remove log + interactive stdin + suspend-TUI trampoline (Phase 9). */
 public class InstallState {
+    public @Nullable InstallKind kind = null;
     public final List<String> log = new ArrayList<>();
     public @Nullable ConcurrentLinkedQueue<String> logQueue = null;
     public @Nullable LinkedBlockingQueue<String> stdinQueue = null;

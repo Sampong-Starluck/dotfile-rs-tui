@@ -76,21 +76,21 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | custom package input | `CustomInputPopup` | ☑ |
 | search input + results (3-col, loading, empty) | `feature/search/` SearchInputPopup + SearchResultsView | ☑ |
 | installed view (red remove styling, refresh) | `feature/installed/InstalledView` | ☑ |
-| install/remove decision tree | `feature/install/InstallController` | ☐ (Phase 9; contract recorded in `CatalogActions`/`SystemService`) |
+| install/remove decision tree | `feature/install/InstallController` | ☑ |
 | (new) explicit confirm before running commands | `ConfirmActionPopup` (lazygit-style) | ☑ |
-| sudo password modal | `SudoPopup` (masked input added) | ☐ |
-| install modal: colored log, autoscroll, stdin input | `InstallLogPopup` + `LogView` | ☐ |
+| sudo password modal | `SudoPopup` (masked input added) | ☑ |
+| install modal: colored log, autoscroll, stdin input | `InstallLogPopup` + `Logs.colored` | ☑ |
 | scripts tab (shells list, info, log, all keys) | `feature/scripts/` ShellsView + ShellInfoView + ScriptsController | ☑ |
 
 ## Async & external (Phase 9 — Spring-native)
 
 | Rust behavior | Java target | Done |
 |---|---|---|
-| `run_search` thread + mpsc | `PackageQueryService.search` `@Async` → `CompletableFuture`, polled per frame | ☐ (Phase 7 wired the future/drain plumbing + stub body; Phase 9 spawns the real process) |
-| `run_list_installed` | `PackageQueryService.listInstalled` | ☐ (same — Phase 7 stub, Phase 9 real) |
-| streamed install/remove + stdin relay + sudo -S | `InstallExecutionService.runStreaming` + `InstallLogEvent` + `InstallLogBridge` | ☐ |
-| `drain_stdout_to_log` (\r\n split, ansi strip, noise filter) | `InstallExecutionService.drainStdout` | ☐ |
-| `main.rs::run_in_terminal` suspend/inheritIO/restore/reset | `ui/ExternalRunner` | ☐ |
+| `run_search` thread + mpsc | `PackageQueryService.search` `@Async` → `CompletableFuture`, polled per frame | ☑ |
+| `run_list_installed` | `PackageQueryService.listInstalled` | ☑ |
+| streamed install/remove + stdin relay + sudo -S | `InstallExecutionService.runStreaming` + `InstallLogEvent` + `InstallLogBridge` | ☑ |
+| `drain_stdout_to_log` (\r\n split, ansi strip, noise filter) | `InstallExecutionServiceImp.drainStdout` | ☑ |
+| `main.rs::run_in_terminal` suspend/inheritIO/restore/reset | `ui/ExternalRunner` | ☑ |
 
 ## Chrome & packaging (Phases 10–11)
 
@@ -287,5 +287,58 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   `mise exec -- mvn -q spring-boot:run` reached the same `ToolkitApp.run()` → backend-creation point
   as every prior phase (all new beans resolve, `TuiApp.onStart()` runs), failing only at the same
   `BackendException: Failed to get input console mode` recorded since Phase 5 — not a regression.
-  The interactive DoD rows need a human to run `mise run dev` in an actual Windows Terminal window.
+  A human has since run `mise run dev` in a real Windows Terminal window and confirmed every
+  interactive DoD row in `plan/phase-08-script-tab.md` (Shells panel listing, deploy, idempotent
+  re-deploy, undeploy, set/clear primary shell). Phase 8 is fully done.
+- **Phase 9:** `ToolkitRunner`/`TuiRunner` (verified against the 0.4.0 sources jar) expose no
+  pause/resume API — only `create()`/`close()`. Per the phase-09 plan's own note, `TuiApp` now
+  overrides `ToolkitApp.run()` (not inherited) with a loop: each `super.run()` call owns one
+  `ToolkitRunner` lifecycle end-to-end; `frameTick()` calls `quit()` when `st.install.runExternal`
+  is non-empty (`externalRunPending` guards against calling it twice), and once `super.run()`
+  returns — after `TuiRunner.close()`'s `cleanup()` has already left the alt screen and disabled
+  raw mode — `run()` hands off to the new `ui/ExternalRunner` (port of `main.rs::run_in_terminal`,
+  the only class besides the framework allowed `System.out`/`System.in`) and then loops back into
+  `super.run()`, opening a fresh runner. `onStart()` re-runs on each loop iteration (idempotent:
+  `platformDetectStarted` still guards the one-shot async platform detect; panel/main controller
+  maps are just overwritten with fresh, stateless instances) rather than adding a second
+  init-vs-reinit code path.
+- **Phase 9:** `InstallLogBridge` (the `@EventListener` that appends `InstallLogEvent`s to the
+  queue `TuiApp.frameTick()` drains, then wakes the render loop) takes its `Runnable` render-waker
+  via a setter (`TuiApp.onStart()` calls `installLogBridge.setRenderWaker(this::requestRender)`)
+  instead of constructor injection. Constructor-injecting `TuiApp` into `InstallLogBridge` would
+  create a circular Spring bean dependency (`TuiApp` already needs `InstallLogBridge` to build
+  `InstallController`); the setter breaks the cycle without weakening the "only one listener
+  appends" SRP the phase-09 plan calls for.
+- **Phase 9:** the Rust worker's cancellation-on-close comes for free from `mpsc` channel
+  semantics (`Esc` implicitly drops the receiver, so the detached worker's next `tx.send()` fails
+  and `drain_stdout_to_log` returns early). `InstallLogBridge.sink` is a `ConcurrentLinkedQueue`
+  with no such "closed" signal — appends always succeed — and it is a single field shared across
+  every install/remove run, so a late event from a worker abandoned via `Esc` would otherwise leak
+  into whatever queue the *next* install attaches. Added `InstallLogBridge.detach()`, called from
+  `InstallController.onClose()` (the same place `InstallLogPopup`'s Esc handler already routes
+  through), so abandoned-worker events are dropped instead of cross-contaminating a later run. The
+  worker itself still runs its remaining commands to completion detached, matching the Rust.
+- **Phase 9:** `SudoPopup`'s password field was speced as a raw `StringBuilder` (matching the
+  Phase 7 stub) but is implemented with the toolkit's real `TextInputState` instead — masking is
+  just `"•".repeat(password.length())` at render time, and it reuses `Toolkit.handleTextInputKey`
+  rather than hand-rolling char/backspace handling a second time (`CustomInputPopup`/
+  `SearchInputPopup` already established this pattern in Phase 7). Pure DRY/consistency
+  improvement, no behavior change.
+- **Phase 9 verification:** `mvn compile`/`test` are green (50 tests, unchanged — phase-09's DoD
+  is entirely interactive/process-spawning behavior with no new fixture-style unit tests called
+  for). `mise exec -- mvn -q spring-boot:run` reached the same point as every prior phase — all
+  new beans (`SystemService` was already Phase-3; `InstallExecutionService`/
+  `InstallExecutionServiceImp`, `InstallLogBridge`, and `TuiApp`'s new constructor deps resolve
+  cleanly, `TuiApp.onStart()` builds `InstallController` and wires it into every catalog-adjacent
+  controller) and failed only at the same `BackendException: Failed to get input console mode`
+  recorded since Phase 5 — not a regression. The Definition of Done in
+  `plan/phase-09-async-install.md` is entirely live process-spawning behavior (real `winget
+  search`, real install/remove streaming, sudo, suspend/resume with choco or a temporarily-forced
+  interactive manager) that needs a human to run `mise run dev` in a real Windows Terminal window
+  with real package managers installed — none of it can be driven from this agent session.
+- **Phase 9 (human verification, post-review):** a human ran `mise run dev` in a real Windows
+  Terminal window with real package managers installed and confirmed every interactive DoD row in
+  `plan/phase-09-async-install.md` (real `winget search`, real installed-list `[I]` markers,
+  install streaming to `═══ All done ═══`, remove flow, Esc-mid-install, external-command
+  suspend/resume round-trip). Phase 9 is fully done.
 - (add more here)

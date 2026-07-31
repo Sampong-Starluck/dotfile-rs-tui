@@ -148,11 +148,11 @@ Hint bar (extend `Bindings`): `enter: deploy · d: undeploy · p: primary · c: 
 ## Definition of Done (Phase 8)
 
 - [x] All ScriptService tests green; **deploy tests run only against @TempDir** (never the real APPDATA)
-- [ ] Panel `[4]` lists the 5 shells; powershell shows `◆` if pwsh installed, bash likely `○`; main panel shows shell info while `[4]` focused — **pending human run in Windows Terminal, see below**
-- [ ] Enter on PowerShell deploys: file appears at `%APPDATA%\dotfile-rs\scripts\posh\main_profile.ps1`, profile gains the dot-source line, log shows both ✓ lines, icon flips to `✓` — **pending human run**
-- [ ] `d` undeploys and cleans the profile line (verify file content manually once) — **pending human run**
-- [ ] `p` sets primary (★ appears; config.json written); `c` clears it — **pending human run**
-- [ ] Re-running `Enter` is idempotent ("— Already in …") — **pending human run**
+- [x] Panel `[4]` lists the 5 shells; powershell shows `◆` if pwsh installed, bash likely `○`; main panel shows shell info while `[4]` focused — confirmed by human run in Windows Terminal
+- [x] Enter on PowerShell deploys: file appears at `%APPDATA%\dotfile-rs\scripts\posh\main_profile.ps1`, profile gains the dot-source line, log shows both ✓ lines, icon flips to `✓` — confirmed by human run
+- [x] `d` undeploys and cleans the profile line (verify file content manually once) — confirmed by human run
+- [x] `p` sets primary (★ appears; config.json written); `c` clears it — confirmed by human run
+- [x] Re-running `Enter` is idempotent ("— Already in …") — confirmed by human run
 - [x] View classes contain zero service calls; all mutations go through `ScriptsController` — pure
       per-shell-id display values (`binary`/`profilePath`/`sourceHint`) computed once in
       `ScriptServiceImp.loadShellStatuses()` and carried on the widened `ShellStatus` record instead

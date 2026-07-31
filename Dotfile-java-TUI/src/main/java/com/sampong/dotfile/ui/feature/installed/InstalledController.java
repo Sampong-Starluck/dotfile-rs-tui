@@ -9,6 +9,7 @@ import com.sampong.dotfile.service.CommandPlanner;
 import com.sampong.dotfile.service.PackageQueryService;
 import com.sampong.dotfile.ui.Keys;
 import com.sampong.dotfile.ui.feature.catalog.CatalogActions;
+import com.sampong.dotfile.ui.feature.install.InstallController;
 import com.sampong.dotfile.ui.state.AppState;
 import lombok.RequiredArgsConstructor;
 
@@ -18,6 +19,7 @@ public class InstalledController implements KeyController {
 
     private final CommandPlanner commandPlanner;
     private final PackageQueryService packageQueryService;
+    private final InstallController installController;
 
     @Override
     public EventResult handleKey(KeyEvent key, AppState st) {
@@ -49,7 +51,7 @@ public class InstalledController implements KeyController {
             return EventResult.HANDLED;
         }
         if (key.isChar('d')) {
-            CatalogActions.openRemoveConfirm(st, commandPlanner);
+            CatalogActions.openRemoveConfirm(st, commandPlanner, installController);
             return EventResult.HANDLED;
         }
         if (Keys.isEsc(key)) {
