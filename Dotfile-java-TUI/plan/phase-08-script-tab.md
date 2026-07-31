@@ -147,10 +147,24 @@ Hint bar (extend `Bindings`): `enter: deploy · d: undeploy · p: primary · c: 
 
 ## Definition of Done (Phase 8)
 
-- [ ] All ScriptService tests green; **deploy tests run only against @TempDir** (never the real APPDATA)
-- [ ] Panel `[4]` lists the 5 shells; powershell shows `◆` if pwsh installed, bash likely `○`; main panel shows shell info while `[4]` focused
-- [ ] Enter on PowerShell deploys: file appears at `%APPDATA%\dotfile-rs\scripts\posh\main_profile.ps1`, profile gains the dot-source line, log shows both ✓ lines, icon flips to `✓`
-- [ ] `d` undeploys and cleans the profile line (verify file content manually once)
-- [ ] `p` sets primary (★ appears; config.json written); `c` clears it
-- [ ] Re-running `Enter` is idempotent ("— Already in …")
-- [ ] View classes contain zero service calls; all mutations go through `ScriptsController`
+- [x] All ScriptService tests green; **deploy tests run only against @TempDir** (never the real APPDATA)
+- [ ] Panel `[4]` lists the 5 shells; powershell shows `◆` if pwsh installed, bash likely `○`; main panel shows shell info while `[4]` focused — **pending human run in Windows Terminal, see below**
+- [ ] Enter on PowerShell deploys: file appears at `%APPDATA%\dotfile-rs\scripts\posh\main_profile.ps1`, profile gains the dot-source line, log shows both ✓ lines, icon flips to `✓` — **pending human run**
+- [ ] `d` undeploys and cleans the profile line (verify file content manually once) — **pending human run**
+- [ ] `p` sets primary (★ appears; config.json written); `c` clears it — **pending human run**
+- [ ] Re-running `Enter` is idempotent ("— Already in …") — **pending human run**
+- [x] View classes contain zero service calls; all mutations go through `ScriptsController` — pure
+      per-shell-id display values (`binary`/`profilePath`/`sourceHint`) computed once in
+      `ScriptServiceImp.loadShellStatuses()` and carried on the widened `ShellStatus` record instead
+      (see FEATURE-PARITY.md deviation)
+
+**Verification note:** `mvn compile`/`test` are green (50 tests, incl. 6 new `ScriptServiceImpTest`
+cases: deploy/undeploy round trip, `addSourceToProfile` idempotency, `removeSourceFromProfile` block
+removal + trailing-newline preservation, config round-trip, corrupt-JSON fallback, `sourceHint`
+syntax). `mise exec -- mvn -q spring-boot:run` reached the same point as every prior phase —
+`ToolkitApp.run()` → backend creation — with all new beans (`ScriptService`/`ScriptServiceImp`,
+`TuiApp`'s new `scriptService` dependency, `ScriptsController`) resolving cleanly and
+`TuiApp.onStart()` running, failing only at the same `BackendException: Failed to get input console
+mode` recorded since Phase 5 — not a regression (no real console handle in an agent-launched
+process). The interactive rows above need a human to run `mise run dev` in an actual Windows
+Terminal window.

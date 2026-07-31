@@ -48,9 +48,9 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | `src/utils/decode_util.rs` | `service/DecodeUtil` | ☑ |
 | `src/utils/text_util.rs` | `service/TextUtil` | ☑ |
 | `search_service.rs` 9 search + 8 list parsers | `service/OutputParsers` | ☑ |
-| `app_tab.rs::build_commands/build_remove_commands/selected_display_names` | `service/CommandPlanner` | ☐ |
-| `src/service/script_service.rs` (all fs/profile/config logic) | `service/ScriptService` | ☐ |
-| `src/logging.rs` (file-only logging) | `logback-spring.xml` → `debug.log` | ☐ |
+| `app_tab.rs::build_commands/build_remove_commands/selected_display_names` | `service/CommandPlanner` | ☑ |
+| `src/service/script_service.rs` (all fs/profile/config logic) | `service/ScriptService` | ☑ |
+| `src/logging.rs` (file-only logging) | `logback-spring.xml` → `debug.log` | ☑ |
 
 ## UI shell (Phase 5)
 
@@ -80,7 +80,7 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | (new) explicit confirm before running commands | `ConfirmActionPopup` (lazygit-style) | ☑ |
 | sudo password modal | `SudoPopup` (masked input added) | ☐ |
 | install modal: colored log, autoscroll, stdin input | `InstallLogPopup` + `LogView` | ☐ |
-| scripts tab (shells list, info, log, all keys) | `feature/scripts/` ShellsPanel + ShellInfoView + ScriptsController | ☐ (Phase 8) |
+| scripts tab (shells list, info, log, all keys) | `feature/scripts/` ShellsView + ShellInfoView + ScriptsController | ☑ |
 
 ## Async & external (Phase 9 — Spring-native)
 
@@ -265,4 +265,27 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
      applies uniformly to every popup (search, custom-id, sudo, help, confirm, install log).
 
   All three fixed, human re-verified every Phase 7 DoD row afterward (`plan/phase-07-catalog-search-installed.md`).
+- **Phase 8:** `model/ShellStatus` widened beyond the Rust struct's 4 fields (`entry`, `detected`,
+  `deployed`, `targetPath`) with `binary`/`profilePath`/`sourceHint`. The Rust `render_info` calls
+  `shell_binary`/`shell_profile_path`/`source_hint` directly since Rust has no view/service-call
+  boundary; our `ui/` package does (PLAN.md §4 SRP — views are zero-service-call, a Phase 8 DoD
+  row). These three values are pure, id-derived, and side-effect-free, so `ScriptServiceImp
+  .loadShellStatuses()` computes them once per shell and `ShellInfoView` just reads the record —
+  `ScriptService` stays the single owner of all path-computation logic.
+- **Phase 8:** the lazy `st.scripts.shells` load lives in a new `TuiApp.scriptsTick()` (mirroring
+  the existing `catalogTick()`), not inline in `ShellsView.render()` like the Rust `script_render`
+  does — views must stay pure/non-mutating (PLAN.md §5a), and `catalogTick()` already established
+  this "lazy load in a `TuiApp` tick method" pattern in Phase 7. Fully synchronous (local filesystem
+  reads only), so unlike `catalogTick()`'s async-future wait, there's nothing to poll.
+- **Phase 8:** `ScriptsState` gained `explicitPrimaryShell` (the raw `config.json` value) alongside
+  the existing `primaryShell` (effective: explicit-or-detected-default) — needed so `ShellInfoView`
+  can render the Rust `render_info`'s three-way primary-line distinction ("★ set as primary" /
+  "◇ system default" / "—") from state alone, without calling `ScriptService.readConfig()` itself.
+- **Phase 8 verification:** `mvn compile`/`test` are green (50 tests, incl. 6 new
+  `ScriptServiceImpTest` cases, all forcing the Unix/XDG path branch against `@TempDir` — the
+  Windows branch reads the real `%APPDATA%` env var directly, which a unit test must never touch).
+  `mise exec -- mvn -q spring-boot:run` reached the same `ToolkitApp.run()` → backend-creation point
+  as every prior phase (all new beans resolve, `TuiApp.onStart()` runs), failing only at the same
+  `BackendException: Failed to get input console mode` recorded since Phase 5 — not a regression.
+  The interactive DoD rows need a human to run `mise run dev` in an actual Windows Terminal window.
 - (add more here)

@@ -37,10 +37,28 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-08** (next: implement `plan/phase-08-script-tab.md`)
+- Current phase: **phase-08 (implementation complete; interactive Definition
+  of Done rows pending a human manual run — see below)** (next: verify
+  phase-08 interactively, then phase-09)
 - Completed phases: phase-01 through phase-07 (all Definition of Done rows,
   incl. the interactive ones, confirmed by a human running `mise run dev` in
   a real Windows Terminal window)
+- Phase 8: `mvn compile`/`test` green (50 tests, incl. 6 new
+  `ScriptServiceImpTest` cases). `mise exec -- mvn -q spring-boot:run` reached
+  `ToolkitApp.run()` (all new beans — `ScriptService`/`ScriptServiceImp`,
+  `TuiApp`'s new `scriptService` dep, `ScriptsController` — resolve cleanly;
+  `TuiApp.onStart()` runs) and failed only at the same `BackendException:
+  Failed to get input console mode` recorded since Phase 5 — not a
+  regression. **Please run `mise run dev` yourself and confirm the checklist
+  in `plan/phase-08-script-tab.md`** before phase-09 starts. Deviations
+  (`model/ShellStatus` widened with pure `binary`/`profilePath`/`sourceHint`
+  fields, computed once in `ScriptServiceImp.loadShellStatuses()`, so
+  `ShellInfoView` stays zero-service-call; lazy shells load lives in a new
+  `TuiApp.scriptsTick()` mirroring `catalogTick()`, not inline in
+  `ShellsView.render()` like the Rust `script_render`; `ScriptsState` gained
+  `explicitPrimaryShell` alongside the effective `primaryShell` so the view
+  can render the three-way primary-line distinction from state alone) are
+  logged in FEATURE-PARITY.md.
 - Phase 7: `mvn compile`/`test` green (44 tests, incl. 5 new `CommandPlannerTest`
   cases). A human ran `mise run dev` in a real Windows Terminal and walked
   every interactive DoD row in `plan/phase-07-catalog-search-installed.md`.

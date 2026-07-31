@@ -21,7 +21,7 @@ import com.sampong.dotfile.ui.feature.managers.CommandsView;
 import com.sampong.dotfile.ui.feature.managers.ManagersController;
 import com.sampong.dotfile.ui.feature.managers.ManagersView;
 import com.sampong.dotfile.ui.feature.scripts.ShellInfoView;
-import com.sampong.dotfile.ui.feature.scripts.ShellsController;
+import com.sampong.dotfile.ui.feature.scripts.ScriptsController;
 import com.sampong.dotfile.ui.feature.scripts.ShellsView;
 import com.sampong.dotfile.ui.feature.search.SearchController;
 import com.sampong.dotfile.ui.feature.search.SearchResultsView;
@@ -34,6 +34,7 @@ import com.sampong.dotfile.service.CommandPlanner;
 import com.sampong.dotfile.service.OsService;
 import com.sampong.dotfile.service.PackageQueryService;
 import com.sampong.dotfile.service.PlatformQueryService;
+import com.sampong.dotfile.service.ScriptService;
 import com.sampong.dotfile.ui.state.AppState;
 import com.sampong.dotfile.ui.component.HintBar;
 import com.sampong.dotfile.ui.component.Panels;
@@ -67,6 +68,7 @@ public class TuiApp extends ToolkitApp {
     private final AppCatalogService appCatalogService;
     private final CommandPlanner commandPlanner;
     private final PackageQueryService packageQueryService;
+    private final ScriptService scriptService;
 
     private final Map<PanelId, FeatureView> panelViews = buildPanelViews();
     private final Map<MainView, FeatureView> mainViews = buildMainViews();
@@ -89,7 +91,7 @@ public class TuiApp extends ToolkitApp {
         panelControllers.put(PanelId.STATUS, new StatusController());
         panelControllers.put(PanelId.MANAGERS, new ManagersController());
         panelControllers.put(PanelId.SECTIONS, new SectionsController(commandPlanner, packageQueryService));
-        panelControllers.put(PanelId.SHELLS, new ShellsController());
+        panelControllers.put(PanelId.SHELLS, new ScriptsController(scriptService));
 
         mainControllers.put(MainView.APPS, new AppsController(commandPlanner, packageQueryService));
         mainControllers.put(MainView.INSTALLED, new InstalledController(commandPlanner, packageQueryService));
@@ -135,6 +137,7 @@ public class TuiApp extends ToolkitApp {
         }
 
         catalogTick();
+        scriptsTick();
 
         // External-command trampoline (Phase 9); until then, log + clear.
         if (!st.install.runExternal.isEmpty()) {
@@ -176,6 +179,19 @@ public class TuiApp extends ToolkitApp {
         if (!st.installed.autoLoaded && !st.installed.loading && !st.platform.detecting) {
             CatalogActions.refreshInstalled(st, packageQueryService);
             log.debug("triggered background installed-list load for mgr={}", st.platform.activeBinary());
+        }
+    }
+
+    /** Lazy shells-panel load (PLAN.md phase-08 §8.3) — kept out of {@code ShellsView}/{@code
+     *  ShellInfoView} since views are pure/zero-service-call (PLAN.md §4 SRP); fully synchronous
+     *  filesystem reads, so unlike {@link #catalogTick()} there's no async future to wait on. */
+    private void scriptsTick() {
+        if (st.scripts.shells == null) {
+            long start = System.nanoTime();
+            st.scripts.shells = scriptService.loadShellStatuses();
+            st.scripts.explicitPrimaryShell = scriptService.readConfig().primaryShell();
+            st.scripts.primaryShell = scriptService.effectivePrimaryShell().orElse(null);
+            log.debug("startup: shell statuses load took {}ms", (System.nanoTime() - start) / 1_000_000);
         }
     }
 
@@ -276,6 +292,16 @@ public class TuiApp extends ToolkitApp {
                     new HintBar.Binding("j/k", "move"),
                     new HintBar.Binding("pgup/pgdn", "scroll commands"),
                     new HintBar.Binding("1-4", "jump"),
+                    new HintBar.Binding("?", "help"),
+                    new HintBar.Binding("q", "quit"));
+            case SHELLS -> List.of(
+                    new HintBar.Binding("1-4", "jump"),
+                    new HintBar.Binding("j/k", "move"),
+                    new HintBar.Binding("enter", "deploy"),
+                    new HintBar.Binding("d", "undeploy"),
+                    new HintBar.Binding("p", "primary"),
+                    new HintBar.Binding("c", "clear"),
+                    new HintBar.Binding("r", "refresh"),
                     new HintBar.Binding("?", "help"),
                     new HintBar.Binding("q", "quit"));
             default -> List.of(
