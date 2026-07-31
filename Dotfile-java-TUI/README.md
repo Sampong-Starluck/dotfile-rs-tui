@@ -38,6 +38,33 @@ or the convenience launcher:
 .\dotfile.cmd
 ```
 
+### Native image (Phase 11)
+
+`mise run native` produces `target/dotfile-java-tui.exe` — run it directly, no
+`java`/`--enable-native-access` flag needed. Requires the MSVC C++ build tools on `PATH`
+(`cl.exe`); GraalVM native-image locates a Visual Studio install automatically if present. The
+`native` Maven profile passes `-H:+UnlockExperimentalVMOptions -H:+SharedArenaSupport`, required
+because TamboUI's Windows Panama backend closes a shared FFM `Arena`.
+
+**Profile-guided optimization:** the baseline build already gets GraalVM's automatic ML-inferred
+PGO. For a build tuned to real usage:
+
+```powershell
+mise run native-instrument   # -> target/dotfile-java-tui-sampling.exe
+# run it in a real Windows Terminal, exercise the app (ideally the full walkthrough this
+# README's keybinding table covers), then quit — it writes default.iprof to this directory
+mise run native-pgo          # rebuilds target/dotfile-java-tui.exe using that profile
+```
+
+This uses `--pgo-sampling`, not the more common `--pgo-instrument` — the latter hits a GraalVM
+25.0.3 native-image compiler crash on this project (a LIR register-allocator assertion inside the
+FFM upcall stub TamboUI's Panama backend registers; see `FEATURE-PARITY.md`). `--pgo-sampling` is
+GraalVM's own lower-overhead alternative and produces an equally usable `default.iprof`. A profile
+collected from only the app's non-interactive startup path (no real console available in some
+environments) already builds cleanly and shrinks the binary noticeably; a profile from the full
+interactive walkthrough above would cover the actual TUI hot paths too and is the recommended way
+to (re)generate `default.iprof` before relying on `native-pgo` for a release build.
+
 ## Keybindings
 
 Always available: `1-4` jump to a side panel · `tab`/`shift-tab` cycle focus · `?` help · `q` quit.

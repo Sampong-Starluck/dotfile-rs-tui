@@ -85,7 +85,8 @@ don't crash the app.
 - [x] Mouse works or is documented unsupported — click-to-focus confirmed working (toolkit-native,
       Phase 5); row-click/wheel-scroll extras documented as skipped in FEATURE-PARITY.md
 - [x] Fat jar runs standalone; README + launcher script written — `README.md`, `dotfile.cmd`
-- [ ] Acceptance run §10.5 passes end-to-end — **pending human run in Windows Terminal**
+- [x] Acceptance run §10.5 passes end-to-end — confirmed by a human running `mise run dev`
+      in a real Windows Terminal
 - [x] 200 ms rule audit: `debug.log` timing lines reviewed; every slow step is lazy with a spinner
       placeholder — re-confirmed; Phase 10 touches no startup-path code, so Phases 5-9's audits
       still hold (agent-session launch still can't reach `onStart()`'s timing lines past the known

@@ -20,6 +20,12 @@
   <properties>
     <java.version>25</java.version>
     <tamboui.version>0.4.0</tamboui.version>
+    <!-- PGO knobs for the "native" profile below — overridden via -D for the instrument/apply steps
+         (see mise.toml's native-instrument/native-pgo tasks). Defaults produce the plain baseline
+         build; native.pgoArg defaults to a harmless repeat of a flag already passed statically,
+         since native-image doesn't tolerate an empty buildArg. -->
+    <native.imageName>dotfile-java-tui</native.imageName>
+    <native.pgoArg>--enable-native-access=ALL-UNNAMED</native.pgoArg>
   </properties>
 
   <dependencyManagement>
@@ -35,11 +41,6 @@
   </dependencyManagement>
 
   <dependencies>
-
-    <dependency>
-      <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-actuator</artifactId>
-    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
@@ -112,4 +113,49 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <!-- Native-image build. Keeping this profile's id as "native" is required, not cosmetic:
+         spring-boot-starter-parent ships its own built-in profile with this exact id that wires
+         spring-boot:process-aot and auto-detects mainClass for native-maven-plugin; Maven merges a
+         child profile into a parent profile of the same id, which is the only reason this works
+         without us ever declaring a mainClass ourselves. An earlier attempt split this into separate
+         native-instrument/native-pgo profile ids for the PGO workflow below and both failed with
+         "Please specify class... containing the main entry point": neither inherited the parent's
+         process-aot/mainClass wiring since their ids didn't match. Fixed by keeping one "native"
+         profile, parametrized via command-line-overridable properties instead. mise run native is
+         the baseline build (target/dotfile-java-tui.exe, GraalVM's default ML-inferred PGO); mise run
+         native-instrument builds a profiling exe (target/dotfile-java-tui-sampling.exe); mise run
+         native-pgo consumes the profile it collects to rebuild target/dotfile-java-tui.exe.
+         native-instrument uses the pgo-sampling flag, not pgo-instrument, deliberately: pgo-instrument
+         hit a genuine GraalVM 25.0.3 native-image compiler crash on this project (a LIR register-
+         allocator assertion, "mismatched definition: r10|QWORD != r10|QWORD[.]", inside
+         UpcallStubsHolder's upcall stub during method compilation) every time, apparently from
+         pgo-instrument's counter-injection colliding with tamboui-panama-backend's one registered FFM
+         upcall. pgo-sampling builds and runs cleanly, still writes a usable default.iprof, and is
+         GraalVM's own documented lower-overhead alternative for exactly this kind of profiling — see
+         FEATURE-PARITY.md for the full crash trace and how this was diagnosed. -->
+    <profile>
+      <id>native</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <configuration>
+              <imageName>${native.imageName}</imageName>
+              <buildArgs>
+                <buildArg>--enable-native-access=ALL-UNNAMED</buildArg>
+                <!-- tamboui-panama-backend's WindowsTerminal uses a shared Arena for its FFM downcalls;
+                     -H:+SharedArenaSupport is still experimental on GraalVM 25, hence the unlock flag -->
+                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                <buildArg>-H:+SharedArenaSupport</buildArg>
+                <buildArg>${native.pgoArg}</buildArg>
+              </buildArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

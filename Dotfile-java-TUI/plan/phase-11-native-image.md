@@ -68,7 +68,18 @@ Spring Boot's AOT engine runs automatically under this profile
 
 ## Definition of Done (Phase 11)
 
-- [ ] `mise run native` completes **or** the exact failure (toolchain/driver)
-      is documented in FEATURE-PARITY.md with the error output
+- [x] `mise run native` completes **or** the exact failure (toolchain/driver)
+      is documented in FEATURE-PARITY.md with the error output — completes;
+      `target/dotfile-java-tui.exe` (67.7MB, ~3 min build) after two fixes
+      documented in FEATURE-PARITY.md (`NativeHints.TamboUiResources` for
+      `tamboui-tui`'s classpath-resource binding sets; `-H:+SharedArenaSupport`
+      buildArg for `WindowsTerminal`'s shared-Arena FFM close path — this
+      replaces §11.2's speculative `-H:+ForeignAPISupport` guess)
 - [ ] If built: acceptance script passes on the native exe; README updated
-      with native build instructions
+      with native build instructions — **built**, README's native-build
+      section already covers `mise run native`; the acceptance script itself
+      (§10.5, re-run against the exe) still needs a human run in a real
+      Windows Terminal — launching the exe from this agent session reaches
+      the same `BackendException` (no real console handle) every prior
+      phase's agent-launched run has hit, i.e. no regression, but not full
+      interactive verification

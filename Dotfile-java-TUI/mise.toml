@@ -20,3 +20,11 @@ run = "mvn -q clean package"
 [tasks.native]
 run = "mvn -q -Pnative clean native:compile"
 description = "GraalVM native image (Phase 11)"
+
+[tasks.native-instrument]
+run = "mvn -q -Pnative -Dnative.imageName=dotfile-java-tui-sampling -Dnative.pgoArg=--pgo-sampling clean native:compile"
+description = "PGO step 1: build target/dotfile-java-tui-sampling.exe (uses --pgo-sampling, not --pgo-instrument -- see pom.xml comment). Run it in a real Windows Terminal, exercise the app, then quit — it writes default.iprof to the working directory."
+
+[tasks.native-pgo]
+run = "mvn -q -Pnative -Dnative.pgoArg=--pgo=default.iprof clean native:compile"
+description = "PGO step 2: rebuild target/dotfile-java-tui.exe using default.iprof (run native-instrument and exercise the sampling exe first — native-image errors clearly if the file is missing)."

@@ -99,7 +99,7 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | status-bar hints + help overlay (single source) | `ui/Bindings` → `HintBar` + `HelpPopup` | ☑ |
 | mouse (clicks, wheel) | click-to-focus works (toolkit-native); row-click/wheel-scroll extras skipped, see deviations | ◐ |
 | fat jar + launcher + README | Phase 10 (`README.md`, `dotfile.cmd`) | ☑ |
-| GraalVM native-image | Phase 11 — not yet attempted | ☐ |
+| GraalVM native-image | Phase 11 — builds; interactive run needs human confirmation (see below) | ◐ |
 
 ## Resources & interop
 
@@ -390,4 +390,97 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
      `dialog(...).preferredSize(-1,-1,RenderContext.empty()).width()` call `overlay`'s `sized()`
      already made, so both paths share one width-measuring formula) and overrides the real
      (Responsive-bodied) dialog's `.width(...)` with that measured value after the fact.
+- **Phase 11:** `mise run native` (`mvn -Pnative native:compile`) succeeds — `target/dotfile-java-tui.exe`,
+  67.7MB, ~3 min build. Two real native-image issues were hit and fixed (not just the "same
+  `BackendException` as every prior phase" precedent — these are new, native-image-specific):
+  1. `tamboui-tui-0.4.0.jar` ships its built-in key-binding sets as plain classpath resources
+     (`dev/tamboui/tui/bindings/{standard,vim,emacs,intellij,vscode}.properties`) with **no**
+     native-image metadata of its own — unlike `tamboui-panama-backend`, which ships a
+     `reachability-metadata.json` for its FFM downcalls (verified by inspecting both jars directly:
+     `tamboui-panama-backend` has a `META-INF/native-image/.../reachability-metadata.json`,
+     `tamboui-tui` has no `META-INF/native-image` directory at all). Without a hint, the first native
+     build failed at `BindingSets.<clinit>` → `RuntimeIOException: Built-in bindings not found:
+     standard.properties`. Fixed with a `RuntimeHintsRegistrar` (`NativeHints.TamboUiResources`,
+     wired via `@ImportRuntimeHints`) registering `dev/tamboui/tui/bindings/*.properties` — the
+     standard Spring AOT mechanism for classpath-resource hints, not a native-image config file
+     bolted on separately.
+  2. `WindowsTerminal`'s FFM downcalls close a **shared** `Arena` (`Arena.ofShared`), which
+     native-image disables by default: `UnsupportedFeatureError: Support for Arena.ofShared is not
+     active: enable with -H:+SharedArenaSupport`. Fixed by adding that buildArg to the `native`
+     Maven profile. This **replaces** PLAN.md §11.2's speculative `-H:+ForeignAPISupport` guess —
+     that flag isn't what's needed; the FFM downcalls themselves are already covered by
+     `tamboui-panama-backend`'s own shipped `reachability-metadata.json` (21 downcalls + 1 upcall
+     registered automatically per the build log), it's specifically the shared-arena-close path that
+     needs unlocking. GraalVM currently flags `-H:+SharedArenaSupport` as experimental and warns a
+     future release will require pairing it with `-H:+UnlockExperimentalVMOptions` — added that pairing
+     proactively in `pom.xml` rather than waiting for it to become a hard requirement on a GraalVM
+     upgrade.
+  3. `config/NativeHints.java` also carries `@RegisterReflectionForBinding` for the six
+     Jackson-mapped model records PLAN.md §11.3 names (`AppEntry`, `AppSection`, `ShellEntry`,
+     `ShellsFile`, `DotfileConfig`, `SearchResult`) — added proactively per the plan; no reflection
+     failure was actually observed for these (Spring AOT's own processing of Jackson-bound types may
+     already have covered some), but registering them explicitly is cheap and matches the plan's
+     instruction.
+  After these two fixes, launching `target\dotfile-java-tui.exe` from this agent session reaches
+  `dev.tamboui.terminal.BackendFactory.create()` and fails with the same class of error every prior
+  phase has hit here — `BackendException: All backend providers failed to create a backend... Failed
+  to get output console mode` — i.e. no regression, no new blocker: the native binary gets exactly as
+  far as the JVM jar does when launched without a real console handle. **This is genuine parity with
+  the fat jar's own startup path, not full verification** — the interactive acceptance walkthrough
+  (PLAN.md §10.5, re-run against the native exe per phase-11's own Definition of Done) still needs a
+  human to run `target\dotfile-java-tui.exe` in a real Windows Terminal window before Phase 11 can be
+  marked fully done.
+- **Phase 11 (post-review, warnings follow-up):** three items from the native-image build log's own
+  warnings/recommendations were investigated and addressed:
+  1. `Warning: Option 'DynamicProxyConfigurationResources' is deprecated...` traced to
+     `micrometer-core-1.17.0.jar`'s `META-INF/native-image/io.micrometer/micrometer-core/proxy-config.json`
+     (the legacy pre-unified-metadata native-image config format), pulled in transitively via
+     `spring-boot-starter-actuator`. Grepping the whole source tree found **zero** uses of
+     actuator/micrometer anywhere in the codebase, no `management.*`/`actuator.*` config in
+     `application.yml`, and the app is `web-application-type: none` besides — the dependency was dead
+     weight from the start, not in PLAN.md §3's dependency table either. Removed it from `pom.xml`
+     entirely rather than working around the warning; that's the actual root cause, an upstream
+     library's legacy metadata format is not something this project can or should patch around.
+  2. `-H:+SharedArenaSupport` experimental-flag warning: addressed as noted above (paired with
+     `-H:+UnlockExperimentalVMOptions` proactively).
+  3. **PGO** (the build log's own "PGO: Use Profile-Guided Optimizations (`--pgo`) for improved
+     throughput" recommendation) was implemented as a full two-step workflow (`mise run
+     native-instrument` → exercise the exe → `mise run native-pgo`), parametrizing the single `native`
+     Maven profile via `-D`-overridable properties (`native.imageName`, `native.pgoArg`) rather than
+     separate profile ids — a first attempt used separate `native-instrument`/`native-pgo` profile ids
+     and both failed with "Please specify class... containing the main entry point", because
+     `spring-boot-starter-parent` ships its own built-in profile literally named `native` that wires
+     `spring-boot:process-aot` + auto-detected `mainClass` for `native-maven-plugin`, and Maven only
+     merges that wiring into a child profile of the **same id**. This is also why the original Phase 11
+     baseline profile never needed an explicit `mainClass` — it was silently inheriting the parent's.
+     Second, real finding: GraalVM's standard `--pgo-instrument` flag (build an instrumented image,
+     run it to collect `default.iprof`, rebuild with `--pgo`) hits a genuine GraalVM 25.0.3
+     native-image compiler crash on this project, 100% reproducible:
+     ```
+     Fatal error: jdk.graal.compiler.debug.GraalError: mismatched definition: r10|QWORD != r10|QWORD[.]
+       at lir instruction: ... SubstrateAMD64DirectCallOp ... callTarget: HostedMethod<InstrumentationData$ProfilingRuntimeCalls.allocateCountersMemory ...>
+       at method: void com.oracle.svm.core.foreign.UpcallStubsHolder.upcallLow_I_V_...(int)  [entry point]
+       at jdk.graal.compiler.lir.dfa.RegStackValueSet.guaranteeEquals(RegStackValueSet.java:139)
+     ```
+     — a LIR register-allocator assertion inside the FFM upcall stub `tamboui-panama-backend`
+     registers (the build log's own "1 upcalls registered for foreign access" line, every build), most
+     plausibly `--pgo-instrument`'s counter-injection colliding with that upcall trampoline's register
+     conventions. This is a GraalVM compiler-internals bug, not something fixable from application
+     code or Maven config. Worked around (not patched) by using `--pgo-sampling` instead — GraalVM's
+     own documented lower-overhead alternative for the same purpose (build+run to collect a profile,
+     no code instrumentation) — which built and ran cleanly, dumping a working `default.iprof` even
+     from a run that only exercised the app's Spring Boot startup path (the same no-console-handle
+     limitation as everywhere else in this phase). Feeding that `default.iprof` into `mise run
+     native-pgo` produced `Graal compiler: optimization level: 3 ... PGO: user-provided` (up from
+     level 2 / `ML-inferred` on the baseline) and a **40.48MB** binary vs. the baseline's 67.7MB — a
+     real, working PGO pipeline end to end, confirmed to still reach the identical no-regression
+     `BackendException` checkpoint as every other build in this phase. **Caveat, stated plainly**: the
+     `default.iprof` behind that number was collected from a run that never reached the actual TUI
+     event loop (no real console here), so it profiles Spring context startup and JSON/PM-detection
+     code, not the interactive render/key-handling hot paths PGO would matter most for. The size drop
+     is real but likely mostly reachability/dead-code-elimination effects of a narrow profile, not a
+     verified interactive-workload speedup. A human re-running `native-instrument`'s exe through the
+     full PLAN.md §10.5 walkthrough and regenerating `default.iprof` before a release `native-pgo`
+     build is the recommended way to get a profile that actually covers the UI hot paths — documented
+     in `README.md`.
 - (add more here)

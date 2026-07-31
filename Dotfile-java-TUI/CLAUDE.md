@@ -37,12 +37,64 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-10 (implementation complete; interactive Definition
-  of Done rows pending a human manual run — see below)** (next: verify
-  phase-10 interactively, then phase-11)
-- Completed phases: phase-01 through phase-09 (all Definition of Done rows,
-  incl. the interactive ones, confirmed by a human running `mise run dev` in
-  a real Windows Terminal window)
+- Current phase: **phase-11 (native-image build succeeds; interactive
+  acceptance-run row pending a human manual run — see below)** (next: verify
+  phase-11's native exe interactively; phase-11 is the last phase in the
+  main sequence — phase-12 is an unscoped backlog item, not next in order)
+- Completed phases: phase-01 through phase-10 (all Definition of Done rows,
+  incl. the interactive ones, confirmed by a human running `mise run dev`/
+  the fat jar in a real Windows Terminal window)
+- Phase 11: `mvn compile`/`test` green (50 tests, unchanged — no new business
+  logic). `mise run native` (`mvn -Pnative native:compile`) succeeds:
+  `target/dotfile-java-tui.exe`, 67.7MB, ~3 min build. Two real
+  native-image-specific issues were hit and fixed (recorded in detail in
+  FEATURE-PARITY.md): (1) `tamboui-tui-0.4.0.jar`'s built-in key-binding-set
+  `.properties` resources ship with no native-image metadata of their own —
+  fixed with a new `config/NativeHints.TamboUiResources`
+  (`RuntimeHintsRegistrar` via `@ImportRuntimeHints`) registering
+  `dev/tamboui/tui/bindings/*.properties`; (2) `WindowsTerminal`'s FFM code
+  closes a shared `Arena`, which native-image disables unless
+  `-H:+SharedArenaSupport` is passed — added to the `native` Maven profile's
+  buildArgs, **superseding** PLAN.md §11.2's speculative
+  `-H:+ForeignAPISupport` guess (not needed — `tamboui-panama-backend` ships
+  its own `reachability-metadata.json` covering its 21 FFM downcalls + 1
+  upcall already). `config/NativeHints` also carries
+  `@RegisterReflectionForBinding` for the six Jackson-mapped records per
+  §11.3. After both fixes, launching `target\dotfile-java-tui.exe` from this
+  agent session reaches `BackendFactory.create()` and fails with the same
+  class of `BackendException` (no real console handle) every prior phase's
+  agent-launched run has hit — not a regression, genuine parity with the fat
+  jar's own startup path, but **not** full interactive verification.
+  Post-review follow-up on the build log's own warnings (full detail in
+  FEATURE-PARITY.md): removed the unused `spring-boot-starter-actuator`
+  dependency (source of a `DynamicProxyConfigurationResources` deprecation
+  warning via transitive `micrometer-core`; zero actuator/micrometer usage
+  anywhere in the codebase, not in PLAN.md §3's dependency table either —
+  dead weight, not a warning worth working around); paired
+  `-H:+SharedArenaSupport` with `-H:+UnlockExperimentalVMOptions` proactively
+  (GraalVM warns a future release will require it); implemented a full PGO
+  workflow (`mise run native-instrument` → exercise the exe → `mise run
+  native-pgo`), parametrizing the one `native` Maven profile via `-D`
+  properties rather than separate profile ids (separate ids broke Spring
+  Boot's own built-in `native`-named profile inheritance — same root cause
+  class as the mainClass issue below). GraalVM's standard `--pgo-instrument`
+  flag hit a **genuine, 100%-reproducible GraalVM 25.0.3 native-image
+  compiler crash** (a LIR register-allocator assertion inside the FFM upcall
+  stub `tamboui-panama-backend` registers) — not fixable from application
+  code; worked around with `--pgo-sampling` (GraalVM's own lower-overhead
+  alternative), which built, ran, and produced a working `default.iprof`.
+  Feeding that into `native-pgo` produced a real PGO build (`PGO:
+  user-provided`, optimization level 3, 40.48MB vs. the baseline's 67.7MB),
+  confirmed to reach the same no-regression checkpoint — but the profile
+  behind it only covers the app's startup path (same no-console-handle
+  limitation), not the interactive TUI hot loop, so the size drop is real
+  but not a verified interactive-workload speedup; a human re-collecting
+  `default.iprof` from the full §10.5 walkthrough before a release
+  `native-pgo` build is recommended (documented in `README.md`).
+  **Please run `target\dotfile-java-tui.exe` yourself in a real Windows
+  Terminal and confirm the acceptance checklist in
+  `plan/phase-11-native-image.md` §11.4 / PLAN.md §10.5** to close out
+  phase-11's remaining Definition of Done row.
 - Phase 10: `mvn compile`/`test` green (50 tests, unchanged — this phase adds
   no new business logic to unit-test, only UI chrome + packaging).
   `mise run build` produces `target/dotfile-java-tui-0.1.0.jar`; running it
@@ -58,9 +110,9 @@ Compile after every file: `mise exec -- mvn -q compile`.
   per-row `renderedArea()` to hit-test against without a rendering-model
   redesign; `HelpPopup`'s content height is left natural, not
   percentage-clamped, since `DialogElement` has no such API) are logged in
-  FEATURE-PARITY.md. **Please run `mise run dev` yourself in a real Windows
-  Terminal and confirm the checklist in `plan/phase-10-polish-packaging.md`
-  §10.5** before phase-11 starts.
+  FEATURE-PARITY.md. A human has since run `mise run dev` in a real Windows
+  Terminal and confirmed the checklist in `plan/phase-10-polish-packaging.md`
+  §10.5. Phase 10 is fully done.
 - Phase 9: `mvn compile`/`test` green (50 tests, unchanged — this phase's DoD
   is entirely live process-spawning/interactive behavior, not new unit
   tests). `mise exec -- mvn -q spring-boot:run` reached the same
