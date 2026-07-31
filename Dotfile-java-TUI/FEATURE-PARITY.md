@@ -225,4 +225,11 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   `TuiApp.onStart()` runs) and failed only at the same `BackendException: Failed to get input
   console mode` recorded in Phases 5/6 — not a regression. The interactive DoD rows need a human
   to run `mise run dev` in an actual Windows Terminal window.
+- **Phase 7 (post-review):** `LazygitLayout`'s side column max widened from `34` to `42` cols
+  (`min(24)/max(42)`) after a human running `mise run dev` reported the Managers panel routinely
+  clipping package-manager descriptions (e.g. "Windows built-in, lar…"). `ManagersView` also now
+  truncates the description with `UiText.truncate` (ellipsis) sized to the actual remaining row
+  width instead of a flat width threshold, so it degrades cleanly instead of being hard-clipped
+  by the terminal when even the wider column isn't enough. PLAN.md §5's column-width spec updated
+  to match.
 - (add more here)

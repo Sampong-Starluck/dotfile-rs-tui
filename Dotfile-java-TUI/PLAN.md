@@ -198,7 +198,9 @@ diagram); both are now consistent with where the code actually lives.
  1-4 jump · tab cycle · j/k move · space select · d action · / search · ? help
 ```
 
-- **Left column** (~⅓ width, min 24, max 34 cols): four stacked panels,
+- **Left column** (~⅓ width, min 24, max 42 cols — widened from an initial max 34 after
+  Phase 7 human review found panel content, e.g. package-manager descriptions,
+  routinely clipped at 34): four stacked panels,
   numbered like lazygit. **Right:** one main panel. **Bottom:** 1-line
   context-sensitive key-hint bar.
 - **Focus model:** `PanelId { STATUS, MANAGERS, SECTIONS, SHELLS, MAIN }`,
