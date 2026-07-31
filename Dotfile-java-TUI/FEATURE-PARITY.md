@@ -227,9 +227,11 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   to run `mise run dev` in an actual Windows Terminal window.
 - **Phase 7 (post-review):** `LazygitLayout`'s side column max widened from `34` to `42` cols
   (`min(24)/max(42)`) after a human running `mise run dev` reported the Managers panel routinely
-  clipping package-manager descriptions (e.g. "Windows built-in, lar…"). `ManagersView` also now
-  truncates the description with `UiText.truncate` (ellipsis) sized to the actual remaining row
-  width instead of a flat width threshold, so it degrades cleanly instead of being hard-clipped
-  by the terminal when even the wider column isn't enough. PLAN.md §5's column-width spec updated
-  to match.
+  clipping package-manager descriptions (e.g. "Windows built-in, lar…"). Widening alone still
+  wasn't enough (the description competes with the marker + label on one line), so
+  `ManagersView` now gives each manager's description its own indented second line instead of
+  packing it onto the label line — `UiText.truncate` (ellipsis) remains as a safety net for
+  terminals too narrow to fit even a full line. `ManagersView.panelHeight(pmCount)` (2 lines per
+  visible row + border) replaces the old 1-line-per-row height calc in `LazygitLayout`. PLAN.md
+  §5's column-width spec updated to match.
 - (add more here)

@@ -1,6 +1,7 @@
 package com.sampong.dotfile.ui.feature.managers;
 
 import dev.tamboui.toolkit.element.Element;
+import dev.tamboui.toolkit.elements.Column;
 import dev.tamboui.toolkit.elements.Row;
 import com.sampong.dotfile.base.FeatureView;
 import com.sampong.dotfile.model.PackageManager;
@@ -11,12 +12,15 @@ import com.sampong.dotfile.ui.component.Panels;
 import com.sampong.dotfile.ui.component.Responsive;
 import com.sampong.dotfile.ui.component.UiText;
 
+import static dev.tamboui.toolkit.Toolkit.column;
 import static dev.tamboui.toolkit.Toolkit.row;
 import static dev.tamboui.toolkit.Toolkit.spinner;
 import static dev.tamboui.toolkit.Toolkit.text;
 
 /** {@code [2]-Package managers}: spinner while detecting, else a selectable list with an active marker. */
 public class ManagersView implements FeatureView {
+
+    private static final int DESCRIPTION_INDENT = 4;
 
     @Override
     public Element render(AppState st) {
@@ -36,21 +40,29 @@ public class ManagersView implements FeatureView {
         return Panels.framed(2, PanelId.MANAGERS.elementId(), "Package managers", content);
     }
 
-    /** Truncates the description to whatever room is left after the marker + label, rather than
-     *  letting the terminal hard-clip it mid-word — matches the ellipsis convention {@link UiText}
-     *  already uses for the catalog/search/installed lists. */
-    private static Row managerRow(PackageManager pm, AppState st, boolean useBinary, int innerWidth) {
+    /** {@code clamp(pmCount, 1, 6) * 2 + 2} — every visible row reserves 2 lines (label + description). */
+    public static int panelHeight(int pmCount) {
+        return Math.min(Math.max(pmCount, 1), 6) * 2 + 2;
+    }
+
+    /**
+     * The description gets its own indented line below the label instead of competing with it for
+     * horizontal space — a human review of {@code mise run dev} found descriptions routinely
+     * clipped when squeezed onto the same line as the marker + label, even after widening the
+     * side column (PLAN.md 5). {@link UiText#truncate} stays as a safety net for terminals too
+     * narrow to fit the description even on its own line.
+     */
+    private static Column managerRow(PackageManager pm, AppState st, boolean useBinary, int innerWidth) {
         boolean active = st.platform.selectedManager().map(sel -> sel == pm).orElse(false);
         String label = useBinary ? pm.binary() : pm.label();
-        Row line = row(active ? text("● ").green() : text("  "), text(label));
+        Row labelLine = row(active ? text("● ").green() : text("  "), text(label));
 
-        int available = innerWidth - (2 + label.length() + 3);
-        if (available > 0) {
-            String desc = UiText.truncate(pm.description(), available);
-            if (!desc.isEmpty()) {
-                line.add(text(" — " + desc).dim());
-            }
+        String desc = pm.description();
+        if (desc.isEmpty()) {
+            return column(labelLine);
         }
-        return line;
+        int available = Math.max(innerWidth - DESCRIPTION_INDENT, 0);
+        Row descLine = row(text(" ".repeat(DESCRIPTION_INDENT) + UiText.truncate(desc, available)).dim());
+        return column(labelLine, descLine);
     }
 }
