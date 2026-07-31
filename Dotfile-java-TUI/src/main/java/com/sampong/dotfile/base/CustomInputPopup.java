@@ -7,16 +7,13 @@ import com.sampong.dotfile.ui.Keys;
 import com.sampong.dotfile.ui.component.Inputs;
 import com.sampong.dotfile.ui.component.Popups;
 
-import static dev.tamboui.toolkit.Toolkit.text;
-
 /** Custom package-id entry popup: Enter/Space commits the trimmed buffer into {@code st.catalog.selectedIds}. */
 public record CustomInputPopup(TextInputState value) implements Popup {
 
     @Override
     public FeatureView view() {
         return st -> Popups.overlay("Custom package id",
-                Inputs.line(value, "").focusable(false).cursorRequiresFocus(false),
-                text("enter/space: add · esc: cancel").dim());
+                Inputs.line(value, "").focusable(false).cursorRequiresFocus(false));
     }
 
     @Override

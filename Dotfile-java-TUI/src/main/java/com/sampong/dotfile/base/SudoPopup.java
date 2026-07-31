@@ -36,7 +36,6 @@ public record SudoPopup(String mgr, List<String> displayNames, TextInputState pa
             }
             lines.add(text(""));
             lines.add(text("•".repeat(password.length()) + "▌"));
-            lines.add(text("enter: run · esc: cancel").dim());
             return Popups.overlay("Sudo password", lines);
         };
     }

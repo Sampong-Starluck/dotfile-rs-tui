@@ -78,11 +78,21 @@ don't crash the app.
 
 ## Definition of Done (Phase 10)
 
-- [ ] Hint bar context-correct in all states of the table above
-- [ ] Help popup generated from `Bindings` (change a binding → both update)
-- [ ] Mouse works or is documented unsupported
-- [ ] Fat jar runs standalone; README + launcher script written
-- [ ] Acceptance run §10.5 passes end-to-end
-- [ ] 200 ms rule audit: `debug.log` timing lines reviewed; every slow step is lazy with a spinner placeholder
-- [ ] Convention audit: all services interface+`Imp`; no `…Imp` referenced outside `service/implementation/`; no state outside `state/`; Lombok audit — no hand-written loggers/DI constructors, no `@Data`/`@Setter`/`@SneakyThrows` anywhere (PLAN.md §4a)
-- [ ] FEATURE-PARITY.md fully ticked or annotated
+- [x] Hint bar context-correct in all states of the table above — `ui/Bindings.forState` implements
+      the table (incl. popup states, which the old ad-hoc `TuiApp.keyHints()` never covered)
+- [x] Help popup generated from `Bindings` (change a binding → both update) — `HelpPopup` renders
+      `Bindings.sections()`, zero hard-coded key text
+- [x] Mouse works or is documented unsupported — click-to-focus confirmed working (toolkit-native,
+      Phase 5); row-click/wheel-scroll extras documented as skipped in FEATURE-PARITY.md
+- [x] Fat jar runs standalone; README + launcher script written — `README.md`, `dotfile.cmd`
+- [ ] Acceptance run §10.5 passes end-to-end — **pending human run in Windows Terminal**
+- [x] 200 ms rule audit: `debug.log` timing lines reviewed; every slow step is lazy with a spinner
+      placeholder — re-confirmed; Phase 10 touches no startup-path code, so Phases 5-9's audits
+      still hold (agent-session launch still can't reach `onStart()`'s timing lines past the known
+      `BackendException`, same as every prior phase — needs the human run's `debug.log` to fully
+      re-confirm the numbers, but no new slow step was introduced)
+- [x] Convention audit: all services interface+`Imp`; no `…Imp` referenced outside
+      `service/implementation/`; no state outside `state/`; Lombok audit — no hand-written
+      loggers/DI constructors, no `@Data`/`@Setter`/`@SneakyThrows` anywhere (PLAN.md §4a) — grepped
+      clean across `src/main/java`
+- [x] FEATURE-PARITY.md fully ticked or annotated

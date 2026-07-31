@@ -9,8 +9,6 @@ import com.sampong.dotfile.ui.component.Inputs;
 import com.sampong.dotfile.ui.component.Logs;
 import com.sampong.dotfile.ui.component.Popups;
 
-import static dev.tamboui.toolkit.Toolkit.text;
-
 /**
  * Streaming install/remove log + interactive stdin input line (Phase 9). Log/queues live in
  * {@code AppState.install}; {@code onClose} lets the caller ({@code InstallController}) decide
@@ -27,8 +25,7 @@ public record InstallLogPopup(TextInputState input, Runnable onClose) implements
         return st -> Popups.overlay(
                 st.install.kind == InstallKind.REMOVE ? "⬇ Removing" : "⬇ Installing",
                 Logs.colored(st.install.log, 20),
-                Inputs.line(input, "").focusable(false).cursorRequiresFocus(false),
-                text("y/n · enter: send · esc: close").dim());
+                Inputs.line(input, "").focusable(false).cursorRequiresFocus(false));
     }
 
     @Override

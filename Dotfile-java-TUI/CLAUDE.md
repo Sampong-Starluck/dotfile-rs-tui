@@ -37,12 +37,30 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-09 (implementation complete; interactive Definition
+- Current phase: **phase-10 (implementation complete; interactive Definition
   of Done rows pending a human manual run — see below)** (next: verify
-  phase-09 interactively, then phase-10)
-- Completed phases: phase-01 through phase-08 (all Definition of Done rows,
+  phase-10 interactively, then phase-11)
+- Completed phases: phase-01 through phase-09 (all Definition of Done rows,
   incl. the interactive ones, confirmed by a human running `mise run dev` in
   a real Windows Terminal window)
+- Phase 10: `mvn compile`/`test` green (50 tests, unchanged — this phase adds
+  no new business logic to unit-test, only UI chrome + packaging).
+  `mise run build` produces `target/dotfile-java-tui-0.1.0.jar`; running it
+  directly (`java --enable-native-access=ALL-UNNAMED -jar
+  target\dotfile-java-tui-0.1.0.jar`) reached the same `BackendException:
+  Failed to get input console mode` recorded since Phase 5 — not a
+  regression (this agent session still has no real console handle). New:
+  `ui/Bindings` as the single source for the bottom hint bar + `?` help
+  popup (both previously drifted independently — see FEATURE-PARITY.md),
+  `README.md`, `dotfile.cmd` launcher. Convention audit (Lombok, `…Imp`
+  encapsulation, `System.out` scope) grepped clean. Deviations (mouse
+  row-click/wheel-scroll extras skipped — `Lists.selectable` has no
+  per-row `renderedArea()` to hit-test against without a rendering-model
+  redesign; `HelpPopup`'s content height is left natural, not
+  percentage-clamped, since `DialogElement` has no such API) are logged in
+  FEATURE-PARITY.md. **Please run `mise run dev` yourself in a real Windows
+  Terminal and confirm the checklist in `plan/phase-10-polish-packaging.md`
+  §10.5** before phase-11 starts.
 - Phase 9: `mvn compile`/`test` green (50 tests, unchanged — this phase's DoD
   is entirely live process-spawning/interactive behavior, not new unit
   tests). `mise exec -- mvn -q spring-boot:run` reached the same

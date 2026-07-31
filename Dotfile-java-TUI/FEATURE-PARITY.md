@@ -96,18 +96,18 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 
 | Item | Target | Done |
 |---|---|---|
-| status-bar hints + help overlay (single source) | `ui/Bindings` → `KeyHintBar` + `HelpPopup` | ☐ |
-| mouse (clicks, wheel) | works / unsupported note: ______ | ☐ |
-| fat jar + launcher + README | Phase 10 | ☐ |
-| GraalVM native-image | Phase 11 — built / blocked because: ______ | ☐ |
+| status-bar hints + help overlay (single source) | `ui/Bindings` → `HintBar` + `HelpPopup` | ☑ |
+| mouse (clicks, wheel) | click-to-focus works (toolkit-native); row-click/wheel-scroll extras skipped, see deviations | ◐ |
+| fat jar + launcher + README | Phase 10 (`README.md`, `dotfile.cmd`) | ☑ |
+| GraalVM native-image | Phase 11 — not yet attempted | ☐ |
 
 ## Resources & interop
 
 | Item | Target | Done |
 |---|---|---|
-| `src/json/apps.json`, `src/json/shells.json` | `resources/data/` | ☐ |
-| `src/scripts/**` (5 profiles) | `resources/scripts/**` | ☐ |
-| `%APPDATA%\dotfile-rs` + `config.json` snake_case kept Rust-compatible | `ScriptService` + `DotfileConfig` | ☐ |
+| `src/json/apps.json`, `src/json/shells.json` | `resources/data/` | ☑ |
+| `src/scripts/**` (5 profiles) | `resources/scripts/**` | ☑ |
+| `%APPDATA%\dotfile-rs` + `config.json` snake_case kept Rust-compatible | `ScriptService` + `DotfileConfig` | ☑ |
 
 ## Deliberate deviations (append as discovered)
 
@@ -341,4 +341,53 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
   `plan/phase-09-async-install.md` (real `winget search`, real installed-list `[I]` markers,
   install streaming to `═══ All done ═══`, remove flow, Esc-mid-install, external-command
   suspend/resume round-trip). Phase 9 is fully done.
+- **Phase 10:** `ui/Bindings` is the single canonical source for every keybinding hint (PLAN.md
+  §10.1) — `HintBar` (bottom bar) and `HelpPopup` both render from it, replacing the old ad-hoc
+  `TuiApp.keyHints()` switch (which never accounted for popup states, so the bottom hint bar stayed
+  on the underlying panel's hints even while a popup was open) and the Phase-5 stub `HelpPopup`'s
+  hard-coded 2-line text. `HintBar`'s own `Binding` record was removed in favor of
+  `Bindings.Binding` to avoid two near-duplicate types (DRY). The generic inline hint lines that
+  `SearchInputPopup`/`CustomInputPopup`/`SudoPopup`/`InstallLogPopup` had accreted in their own
+  `view()` bodies (Phases 7/9) were removed for the same reason — §10.1's "nothing else may print
+  hints" — since the bottom `HintBar` now always reflects the open popup's context.
+  `ConfirmActionPopup`/`Popups.confirm`'s `"[y] Run   [n] Cancel"` row was kept: it renders
+  caller-supplied labels (not fixed generic text), so it is dialog content, not a duplicate hint.
+- **Phase 10:** mouse row-click-to-move-cursor and wheel-scroll-on-hover (PLAN.md §10.3's optional
+  extras) were not implemented. `dev.tamboui.tui.event.MouseEvent` does expose the needed primitives
+  (`scrollUp`/`scrollDown`, `x()`/`y()`, `isClick()`), but `ui/component/Lists.selectable` renders
+  each list as a fresh, non-persistent `Column` snapshot every frame (via `Responsive`, Phase 9
+  deviation) rather than a stateful widget tree — there is no existing per-row `renderedArea()` to
+  hit-test a click or scroll against without a real redesign of that rendering model, which is out
+  of scope for a polish phase (Rule #1: no piecemeal hack). Click-to-focus on panels (verified
+  working since Phase 5, toolkit-native) is unaffected. Stray mouse events elsewhere are harmless:
+  no code in this app attaches an `onMouseEvent` handler outside `Sized`/`Responsive`'s pass-through
+  delegation, so an unhandled `MouseEvent` just falls through the framework's default (no crash) —
+  confirmed by reading `Element.handleMouseEvent`'s default and the fact `TuiApp` only wires
+  `onKeyEvent` at the root.
+- **Phase 10 (post-review, human found Help unscrollable):** the first cut of `HelpPopup` (see the
+  note above) rendered its full ~60-line generated body with no scrolling, so on any terminal
+  shorter than that it clipped at the bottom with no way to see the rest — found by human review
+  right after the initial Phase 10 pass. Fixed by giving `HelpPopup` a real
+  `dev.tamboui.widgets.scrollbar.ScrollbarState` record component (the same "toolkit widget-state
+  object owned by the popup" pattern `TextInputState` already established on the input popups) and
+  windowing its body through `ui/component/Responsive`, exactly like `Lists.selectable`'s own
+  cursor-following window (Phase 9 deviation) — `j`/`k`/arrows scroll one line, `pgup`/`pgdn` one
+  page (`Bindings.CTX_HELP_POPUP` updated to advertise this). Two `DialogElement` internals drove
+  the implementation, confirmed by reading its decompiled/sources-jar code directly rather than
+  guessing:
+  1. `DialogElement.calculateHeight()` (the one actually used at render time) sums children's real
+     `preferredSize()` when no `.length(n)` is set — unlike the already-known width bug, height
+     alone isn't broken. But `Responsive.preferredSize()` deliberately returns `Size.UNKNOWN`
+     (its content depends on the render-time area), so a Responsive body would size the dialog to
+     just 1 row. Fixed by pinning an explicit `.length(30)`; `renderContent`'s own
+     `Math.min(dialogHeight, area.height())` still clamps that safely down on a short terminal, so
+     30 is a "use a generous chunk of the screen" upper bound, not a hard requirement.
+  2. `DialogElement.calculateWidth()` (also render-time-real, confirmed alongside the height read)
+     ignores children entirely regardless of `.length()`/scrolling — the pre-existing Phase 7 bug.
+     `Popups.overlay`'s own `preferredSize()`-based width fix can't see into a `Responsive` child
+     for the same `Size.UNKNOWN` reason as above, so `HelpPopup` measures width from its full,
+     unwindowed line list via a new `Popups.measureWidth(title, content...)` (factors out the same
+     `dialog(...).preferredSize(-1,-1,RenderContext.empty()).width()` call `overlay`'s `sized()`
+     already made, so both paths share one width-measuring formula) and overrides the real
+     (Responsive-bodied) dialog's `.width(...)` with that measured value after the fact.
 - (add more here)

@@ -30,6 +30,18 @@ public final class Popups {
         return sized(dialog(title, content).rounded().borderColor(Color.YELLOW));
     }
 
+    /**
+     * Natural (unconstrained) preferred width for a title + content set, without building or
+     * rendering a real dialog. Popups whose displayed content is decided at render time (e.g. a
+     * scrollable window, which can't report a real {@code preferredSize()} before layout runs —
+     * see {@code ui/component/Responsive}) can call this with their full, unwindowed content to
+     * still get the same width fix {@link #overlay} applies to everything else, then override
+     * the windowed dialog's width with the result.
+     */
+    public static int measureWidth(String title, Element... content) {
+        return dialog(title, content).preferredSize(-1, -1, RenderContext.empty()).width();
+    }
+
     /** Lazygit-style confirm dialog: warning line, max 10 items + "... and N more", y/n chip row. */
     public static DialogElement confirm(String title, String warning, List<String> items, String yesLabel, String noLabel) {
         boolean overflow = items.size() > 10;

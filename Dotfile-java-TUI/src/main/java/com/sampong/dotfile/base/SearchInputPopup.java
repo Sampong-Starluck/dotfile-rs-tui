@@ -9,16 +9,13 @@ import com.sampong.dotfile.ui.component.Popups;
 
 import java.util.function.Consumer;
 
-import static dev.tamboui.toolkit.Toolkit.text;
-
 /** {@code /} search query popup; {@code onSearch} is invoked with the trimmed query on Enter. */
 public record SearchInputPopup(TextInputState query, Consumer<String> onSearch) implements Popup {
 
     @Override
     public FeatureView view() {
         return st -> Popups.overlay("Search " + st.platform.activeBinary(),
-                Inputs.line(query, "").focusable(false).cursorRequiresFocus(false),
-                text("enter: search · esc: cancel").dim());
+                Inputs.line(query, "").focusable(false).cursorRequiresFocus(false));
     }
 
     @Override
