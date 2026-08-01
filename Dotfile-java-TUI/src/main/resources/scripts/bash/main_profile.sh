@@ -271,9 +271,7 @@ _load_cached ng-completion.bash ng completion script
 # vfox (version manager): intentionally NOT cached. Its activation output does
 # live PATH manipulation and can contain session/PID-specific paths, so a cached
 # copy could bake in a stale PATH. It's a fast Go binary, so eval it directly.
-command -v vfox >/dev/null 2>&1 && eval "$(vfox activate bash)"\
-
-eval "$(oh-my-posh init bash --config /usr/share/oh-my-posh/themes/darkblood.omp.json)"
+command -v vfox >/dev/null 2>&1 && eval "$(vfox activate bash)"
 
 # --- Startup banner ---------------------------------------------------------
 printf "\n"

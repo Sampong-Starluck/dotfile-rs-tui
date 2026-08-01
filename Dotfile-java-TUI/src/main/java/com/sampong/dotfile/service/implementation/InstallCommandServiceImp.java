@@ -76,4 +76,24 @@ public class InstallCommandServiceImp implements InstallCommandService {
             default -> mgr + " remove " + pkg;
         };
     }
+
+    @Override
+    public String updateCommand(String mgr, String pkg) {
+        return switch (mgr) {
+            case "pacman" -> "pacman -S " + pkg;
+            case "yay" -> "yay -S " + pkg;
+            case "paru" -> "paru -S " + pkg;
+            case "apt" -> "apt install --only-upgrade -y " + pkg;
+            case "apt-get" -> "apt-get install --only-upgrade -y " + pkg;
+            case "dnf" -> "dnf upgrade -y " + pkg;
+            case "yum" -> "yum update -y " + pkg;
+            case "xbps-install" -> "xbps-install -u " + pkg;
+            case "apk" -> "apk upgrade " + pkg;
+            case "brew" -> "brew upgrade " + pkg;
+            case "winget" -> "winget upgrade --id " + pkg + " -e";
+            case "scoop" -> "scoop update " + pkg;
+            case "choco" -> "choco upgrade " + pkg + " -y";
+            default -> mgr + " upgrade " + pkg;
+        };
+    }
 }

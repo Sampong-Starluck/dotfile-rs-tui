@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -109,6 +110,46 @@ class OutputParsersTest {
         assertThat(rows).containsExactly(
                 new SearchResult("git", "git", ""),
                 new SearchResult("7zip", "7zip", ""));
+    }
+
+    /** Literal captured {@code winget upgrade} output (PLAN.md phase-13 §13.1), not a synthetic
+     *  fixture — pasted verbatim from a real run with 16 pending updates. */
+    @Test
+    void wingetUpgradeParsesRealCapturedOutputIntoIdToAvailableVersionMap() {
+        String text = "Name                             Id                                  Version                       Available                     Source\n"
+                + "---------------------------------------------------------------------------------------------------------------------------------------\n"
+                + "DBeaver 26.1.2 (current user)    DBeaver.DBeaver.Community           26.1.2                        26.1.3                        winget\n"
+                + "Deno                             DenoLand.Deno                       2.9.0                         2.9.4                         winget\n"
+                + "Docker Desktop                   Docker.DockerDesktop                4.82.0                        4.84.0                        winget\n"
+                + "FFmpeg for yt-dlp                yt-dlp.FFmpeg                       N-123778-g3b55818764-20260331 N-125365-g9a01c1cb6a-20260630 winget\n"
+                + "Kubernetes CLI                   Kubernetes.kubectl                  1.36.0                        1.36.3                        winget\n"
+                + "lazygit                          JesseDuffield.lazygit               0.63.0                        0.63.1                        winget\n"
+                + "OBS Studio                       OBSProject.OBSStudio                32.1.2                        32.2.1                        winget\n"
+                + "Obsidian                         Obsidian.Obsidian                   1.12.7                        1.13.4                        winget\n"
+                + "Oh My Posh                       JanDeDobbeleer.OhMyPosh             29.27.0.0                     30.0.0                        winget\n"
+                + "PostgreSQL 18                    PostgreSQL.PostgreSQL.18            18.4-1                        18.4-2                        winget\n"
+                + "PremiumSoft Navicat Premium 17.3 PremiumSoft.NavicatPremium          17.3.10                       17.3.11                       winget\n"
+                + "Python 3.14.4 (64-bit)           Python.Python.3.14                  3.14.4                        3.14.6                        winget\n"
+                + "Visual Studio Professional 2026  Microsoft.VisualStudio.Professional 18.8.0                        18.8.2                        winget\n"
+                + "Windows Subsystem for Linux      Microsoft.WSL                       2.7.10.0                      2.7.11                        winget\n"
+                + "Zed                              ZedIndustries.Zed                   1.10.2                        1.13.1                        winget\n"
+                + "Zoom Workplace (64-bit)          Zoom.Zoom                           7.1.41345                    7.1.43453                     winget\n"
+                + "16 upgrades available.\n";
+
+        Map<String, String> updates = OutputParsers.parseUpgradeOutput("winget", text);
+
+        assertThat(updates).hasSize(16);
+        assertThat(updates).containsEntry("DBeaver.DBeaver.Community", "26.1.3");
+        assertThat(updates).containsEntry("JesseDuffield.lazygit", "0.63.1");
+        assertThat(updates).containsEntry("yt-dlp.FFmpeg", "N-125365-g9a01c1cb6a-20260630");
+        assertThat(updates).containsEntry("Microsoft.WSL", "2.7.11");
+        assertThat(updates).doesNotContainKey("16");
+    }
+
+    @Test
+    void upgradeOutputDegradesToEmptyMapForUnsupportedManagers() {
+        assertThat(OutputParsers.parseUpgradeOutput("apt", "anything")).isEmpty();
+        assertThat(OutputParsers.parseUpgradeOutput("brew", "anything")).isEmpty();
     }
 
     @Test

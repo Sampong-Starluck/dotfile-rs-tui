@@ -34,6 +34,12 @@ class InstallCommandServiceTest {
     }
 
     @Test
+    void updateCommandBuildsTheWingetLine() {
+        assertThat(service.updateCommand("winget", "JesseDuffield.lazygit"))
+                .isEqualTo("winget upgrade --id JesseDuffield.lazygit -e");
+    }
+
+    @Test
     void installCommandForFallsBackToScoopWhenDetectedMgrIsMissing() {
         AppEntry entry = new AppEntry("Git", "git", Map.of("windows", Map.of("scoop", "git")));
 

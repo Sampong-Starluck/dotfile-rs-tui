@@ -9,6 +9,7 @@ import com.sampong.dotfile.ui.Bindings;
 import com.sampong.dotfile.ui.Keys;
 import com.sampong.dotfile.ui.component.Popups;
 import com.sampong.dotfile.ui.component.Responsive;
+import com.sampong.dotfile.ui.component.Sized;
 import com.sampong.dotfile.ui.component.UiText;
 
 import java.util.ArrayList;
@@ -76,7 +77,17 @@ public record HelpPopup(ScrollbarState scroll) implements Popup {
                 return col;
             });
 
-            DialogElement dialog = Popups.overlay("? Keybindings", body).length(DIALOG_HEIGHT);
+            // Sized.fill (not the bare Responsive) as the dialog's child: DialogElement's
+            // single-child layout falls back to `child.preferredSize()` whenever
+            // `child.constraint()` is null — which a freshly built Responsive (rebuilt every
+            // frame, per PLAN.md's fluent-tree-per-frame model) always is on its first query
+            // this frame, before render() has set `last`. Responsive.preferredSize() always
+            // reports Size.UNKNOWN, which collapses to Constraint.length(1) — the body got
+            // exactly one row, no matter DIALOG_HEIGHT, cutting the popup down to its first
+            // line. Sized.fill() reports a fixed Constraint.fill() directly (never delegates to
+            // the child), sidestepping that fallback entirely — same fix `ui/component/Sized`
+            // already applies elsewhere (Phase 7's column/panel bug).
+            DialogElement dialog = Popups.overlay("? Keybindings", Sized.fill(body)).length(DIALOG_HEIGHT);
             return dialog.width(width);
         };
     }

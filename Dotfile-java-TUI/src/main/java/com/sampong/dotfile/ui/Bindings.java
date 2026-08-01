@@ -6,6 +6,7 @@ import com.sampong.dotfile.base.HelpPopup;
 import com.sampong.dotfile.base.InstallLogPopup;
 import com.sampong.dotfile.base.SearchInputPopup;
 import com.sampong.dotfile.base.SudoPopup;
+import com.sampong.dotfile.model.MainView;
 import com.sampong.dotfile.model.PanelId;
 import com.sampong.dotfile.ui.state.AppState;
 
@@ -55,8 +56,11 @@ public final class Bindings {
             new Binding("space", "select"), new Binding("d", "install"), new Binding("/", "edit query"),
             new Binding("esc", "back"));
     private static final List<Binding> CTX_MAIN_INSTALLED = List.of(
-            new Binding("space", "select"), new Binding("d", "remove"), new Binding("r", "refresh"),
-            new Binding("esc", "back"));
+            new Binding("space", "select"), new Binding("d", "remove"), new Binding("u", "update"),
+            new Binding("r", "refresh"), new Binding("/", "filter"), new Binding("esc", "back"));
+    private static final List<Binding> CTX_MAIN_INSTALLED_FILTERING = List.of(
+            new Binding("type", "filter"), new Binding("j/k", "move"),
+            new Binding("enter", "done"), new Binding("esc", "clear"));
     private static final List<Binding> CTX_SHELLS = List.of(
             new Binding("enter", "deploy"), new Binding("d", "undeploy"), new Binding("p", "primary"),
             new Binding("c", "clear"), new Binding("r", "refresh"));
@@ -84,6 +88,7 @@ public final class Bindings {
                 new Section("Main · Apps", CTX_MAIN_APPS),
                 new Section("Main · Search results", CTX_MAIN_SEARCH_RESULTS),
                 new Section("Main · Installed", CTX_MAIN_INSTALLED),
+                new Section("Main · Installed (filtering)", CTX_MAIN_INSTALLED_FILTERING),
                 new Section("Shells", CTX_SHELLS));
     }
 
@@ -98,6 +103,9 @@ public final class Bindings {
             };
         }
         if (st.focused == PanelId.MAIN) {
+            if (st.mainView == MainView.INSTALLED && st.installed.filtering) {
+                return CTX_MAIN_INSTALLED_FILTERING;
+            }
             return switch (st.mainView) {
                 case APPS -> CTX_MAIN_APPS;
                 case SEARCH_RESULTS -> CTX_MAIN_SEARCH_RESULTS;

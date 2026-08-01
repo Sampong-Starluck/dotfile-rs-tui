@@ -1,8 +1,10 @@
 package com.sampong.dotfile.service.implementation;
 
 import com.sampong.dotfile.event.InstallLogEvent;
+import com.sampong.dotfile.event.InstallProgressEvent;
 import com.sampong.dotfile.service.DecodeUtil;
 import com.sampong.dotfile.service.InstallExecutionService;
+import com.sampong.dotfile.service.ProgressLineParser;
 import com.sampong.dotfile.service.TextUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -38,6 +40,7 @@ public class InstallExecutionServiceImp implements InstallExecutionService {
     public void runStreaming(List<String> commands, @Nullable String sudoPassword, BlockingQueue<String> stdinQueue) {
         for (String cmd : commands) {
             events.publishEvent(new InstallLogEvent("▶ Running: " + cmd));
+            events.publishEvent(InstallProgressEvent.noProgress());
             List<String> parts = List.of(cmd.trim().split("\\s+"));
             if (parts.isEmpty() || parts.getFirst().isEmpty()) {
                 continue;
@@ -80,10 +83,15 @@ public class InstallExecutionServiceImp implements InstallExecutionService {
         events.publishEvent(new InstallLogEvent(code == 0
                 ? "✓ Done: " + parts.getFirst()
                 : "✗ Failed (exit " + code + ")"));
+        events.publishEvent(InstallProgressEvent.noProgress());
     }
 
+    private static final String DOWNLOADING_PREFIX = "Downloading ";
+
     /** Port of {@code drain_stdout_to_log}: winget's {@code \r} progress animation makes
-     *  line-streaming meaningless, so the whole stream is read to EOF first, then split. */
+     *  line-streaming meaningless, so the whole stream is read to EOF first, then split.
+     *  Phase 12 (PLAN.md §12.1): lines {@link DecodeUtil#isNoiseLine} would otherwise just drop
+     *  are additionally checked for a parseable progress number before being discarded. */
     private void drainStdout(Process child) {
         byte[] raw;
         try (var in = child.getInputStream()) {
@@ -92,10 +100,20 @@ public class InstallExecutionServiceImp implements InstallExecutionService {
             return;
         }
         String text = new String(raw, StandardCharsets.UTF_8);
+        String label = null;
         for (String segment : text.split("[\r\n]")) {
             String clean = TextUtil.stripAnsi(segment);
             if (DecodeUtil.isNoiseLine(clean)) {
+                var progress = ProgressLineParser.parse(clean);
+                if (progress.isPresent()) {
+                    var p = progress.get();
+                    events.publishEvent(new InstallProgressEvent(label, p.downloadedText(), p.totalText(), p.percent()));
+                }
                 continue;
+            }
+            if (clean.startsWith(DOWNLOADING_PREFIX)) {
+                String url = clean.substring(DOWNLOADING_PREFIX.length()).trim();
+                label = url.substring(url.lastIndexOf('/') + 1);
             }
             events.publishEvent(new InstallLogEvent(clean));
         }

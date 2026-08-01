@@ -17,6 +17,11 @@ public interface CommandPlanner {
 
     List<String> buildRemoveCommands(Set<String> selectedIds, String mgr);
 
+    /** Upgrade the selected already-installed packages (Phase 13, net-new). Callers are
+     *  expected to have already filtered {@code selectedIds} down to ones with an actual
+     *  pending update — this just builds the per-package command string for each. */
+    List<String> buildUpdateCommands(Set<String> selectedIds, String mgr);
+
     /** Catalog ids resolve to their {@code AppEntry.name()}; unknown ids display as-is. */
     List<String> displayNames(List<AppSection> apps, Set<String> ids);
 }

@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /** Command tables ported from Rust {@code service/search_service.rs}; parsers come in Phase 4. */
@@ -50,6 +51,14 @@ public class SearchServiceImp implements SearchService {
             case "choco" -> new Cmd("choco", List.of("list", "--local-only"));
             default -> new Cmd(mgr, List.of("list"));
         };
+    }
+
+    @Override
+    public Optional<Cmd> upgradeListCommand(String mgr) {
+        // Phase 13, net-new: only winget's `winget upgrade` real output has been captured and
+        // parsed so far (PLAN.md phase-13 §13.1) — every other manager stays unsupported until
+        // its own real output is captured, rather than guessing a command/format.
+        return "winget".equals(mgr) ? Optional.of(new Cmd("winget", List.of("upgrade"))) : Optional.empty();
     }
 
     @Override

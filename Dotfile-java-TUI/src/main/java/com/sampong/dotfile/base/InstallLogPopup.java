@@ -1,13 +1,17 @@
 package com.sampong.dotfile.base;
 
 import dev.tamboui.toolkit.Toolkit;
+import dev.tamboui.toolkit.elements.Column;
 import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.widgets.input.TextInputState;
-import com.sampong.dotfile.model.InstallKind;
 import com.sampong.dotfile.ui.Keys;
 import com.sampong.dotfile.ui.component.Inputs;
 import com.sampong.dotfile.ui.component.Logs;
 import com.sampong.dotfile.ui.component.Popups;
+import com.sampong.dotfile.ui.component.ProgressBar;
+
+import static dev.tamboui.toolkit.Toolkit.column;
+import static dev.tamboui.toolkit.Toolkit.text;
 
 /**
  * Streaming install/remove log + interactive stdin input line (Phase 9). Log/queues live in
@@ -22,10 +26,25 @@ public record InstallLogPopup(TextInputState input, Runnable onClose) implements
 
     @Override
     public FeatureView view() {
-        return st -> Popups.overlay(
-                st.install.kind == InstallKind.REMOVE ? "⬇ Removing" : "⬇ Installing",
-                Logs.colored(st.install.log, 20),
-                Inputs.line(input, "").focusable(false).cursorRequiresFocus(false));
+        return st -> {
+            Column body = column();
+            if (st.install.targetLabel != null) {
+                body.add(text(st.install.targetLabel).bold());
+            }
+            if (st.install.progressActive) {
+                body.add(ProgressBar.render(st.install.progressLabel, st.install.progressDownloaded,
+                        st.install.progressTotal, st.install.progressPercent));
+            }
+            body.add(Logs.colored(st.install.log, 20));
+            String title = switch (st.install.kind) {
+                case REMOVE -> "⬇ Removing";
+                case UPDATE -> "⬆ Updating";
+                case INSTALL -> "⬇ Installing";
+                case null -> "⬇ Installing";
+            };
+            return Popups.overlay(title, body,
+                    Inputs.line(input, "").focusable(false).cursorRequiresFocus(false));
+        };
     }
 
     @Override
@@ -36,6 +55,8 @@ public record InstallLogPopup(TextInputState input, Runnable onClose) implements
                 st.install.logQueue = null;
                 st.install.stdinQueue = null;
                 st.install.log.clear();
+                st.install.targetLabel = null;
+                st.install.progressActive = false;
                 st.catalog.selectedIds.clear();
                 onClose.run();
                 return EventResult.HANDLED;

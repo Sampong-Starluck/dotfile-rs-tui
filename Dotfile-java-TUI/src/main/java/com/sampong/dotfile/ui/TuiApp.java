@@ -5,6 +5,7 @@ import dev.tamboui.toolkit.element.Element;
 import dev.tamboui.toolkit.elements.Column;
 import dev.tamboui.toolkit.event.EventResult;
 import dev.tamboui.tui.event.KeyEvent;
+
 import com.sampong.dotfile.base.FeatureView;
 import com.sampong.dotfile.base.HelpPopup;
 import com.sampong.dotfile.base.KeyController;
@@ -43,8 +44,10 @@ import com.sampong.dotfile.ui.state.AppState;
 import com.sampong.dotfile.ui.component.HintBar;
 import com.sampong.dotfile.ui.component.Panels;
 import com.sampong.dotfile.ui.layout.LazygitLayout;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Component;
 
 import java.util.EnumMap;
@@ -188,7 +191,8 @@ public class TuiApp extends ToolkitApp {
     }
 
     /** Drains streamed install/remove log lines published via {@code InstallLogEvent} ->
-     *  {@code InstallLogBridge} into the state the popup renders (PLAN.md §6/§9.2). */
+     *  {@code InstallLogBridge} into the state the popup renders (PLAN.md §6/§9.2), plus the
+     *  latest parsed download/install progress reading (PLAN.md phase-12 §12.1). */
     private void drainInstallLog() {
         var queue = st.install.logQueue;
         if (queue == null) {
@@ -198,6 +202,12 @@ public class TuiApp extends ToolkitApp {
         while ((line = queue.poll()) != null) {
             st.install.log.add(line);
         }
+        var progress = installLogBridge.currentProgress();
+        st.install.progressActive = progress != null;
+        st.install.progressLabel = progress == null ? null : progress.label();
+        st.install.progressDownloaded = progress == null ? null : progress.downloadedText();
+        st.install.progressTotal = progress == null ? null : progress.totalText();
+        st.install.progressPercent = progress == null ? 0 : progress.percent();
     }
 
     /** Lazy catalog load + search/installed future drains + one-time installed auto-load (PLAN.md 7.1).
@@ -230,6 +240,11 @@ public class TuiApp extends ToolkitApp {
             st.installed.future = null;
         }
 
+        if (st.installed.updatesFuture != null && st.installed.updatesFuture.isDone()) {
+            st.installed.updates = joinOrEmptyMap(st.installed.updatesFuture);
+            st.installed.updatesFuture = null;
+        }
+
         if (!st.installed.autoLoaded && !st.installed.loading && !st.platform.detecting) {
             CatalogActions.refreshInstalled(st, packageQueryService);
             log.debug("triggered background installed-list load for mgr={}", st.platform.activeBinary());
@@ -255,6 +270,15 @@ public class TuiApp extends ToolkitApp {
         } catch (Exception e) {
             log.warn("query future failed", e);
             return List.of();
+        }
+    }
+
+    private static Map<String, String> joinOrEmptyMap(CompletableFuture<Map<String, String>> future) {
+        try {
+            return future.join();
+        } catch (Exception e) {
+            log.warn("updates-check future failed", e);
+            return Map.of();
         }
     }
 

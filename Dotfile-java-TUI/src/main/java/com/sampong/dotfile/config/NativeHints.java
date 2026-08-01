@@ -23,7 +23,7 @@ import org.springframework.context.annotation.ImportRuntimeHints;
         DotfileConfig.class,
         SearchResult.class
 })
-@ImportRuntimeHints(NativeHints.TamboUiResources.class)
+@ImportRuntimeHints({NativeHints.TamboUiResources.class, NativeHints.AppDataResources.class})
 public class NativeHints {
 
     /**
@@ -36,6 +36,24 @@ public class NativeHints {
         @Override
         public void registerHints(RuntimeHints hints, @Nullable ClassLoader classLoader) {
             hints.resources().registerPattern("dev/tamboui/tui/bindings/*.properties");
+        }
+    }
+
+    /**
+     * GraalVM native-image excludes all classpath resources by default unless a hint says
+     * otherwise — {@code AppCatalogServiceImp.readAppsJson/readShellsJson} and
+     * {@code ScriptServiceImp.scriptContent}'s {@code getResourceAsStream} calls resolve fine on
+     * the real JVM classpath (fat jar / {@code mvn spring-boot:run}) but return {@code null} in
+     * the native exe without this, which is what native-image's Sections/Shells panels showing
+     * empty traces back to ({@code IllegalArgumentException: argument "src" is null} from
+     * Jackson, caught and logged as "Failed to load apps.json"/"...shells.json").
+     */
+    static final class AppDataResources implements RuntimeHintsRegistrar {
+        @Override
+        public void registerHints(RuntimeHints hints, @Nullable ClassLoader classLoader) {
+            hints.resources().registerPattern("data/apps.json");
+            hints.resources().registerPattern("data/shells.json");
+            hints.resources().registerPattern("scripts/*/*");
         }
     }
 }

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -55,6 +56,25 @@ public class PackageQueryServiceImp implements PackageQueryService {
         } catch (Exception e) {
             log.error("listInstalled via {} failed", mgr, e);
             return CompletableFuture.completedFuture(List.of());
+        }
+    }
+
+    @Override
+    @Async
+    public CompletableFuture<Map<String, String>> checkUpdates(String mgr) {
+        var cmdOpt = searchService.upgradeListCommand(mgr);
+        if (cmdOpt.isEmpty()) {
+            return CompletableFuture.completedFuture(Map.of());
+        }
+        try {
+            byte[] out = runAndCapture(cmdOpt.get());
+            String text = OutputParsers.decodeSearchOutput(mgr, out);
+            Map<String, String> updates = OutputParsers.parseUpgradeOutput(mgr, text);
+            log.debug("checkUpdates: {} update(s) available via {}", updates.size(), mgr);
+            return CompletableFuture.completedFuture(updates);
+        } catch (Exception e) {
+            log.error("checkUpdates via {} failed", mgr, e);
+            return CompletableFuture.completedFuture(Map.of());
         }
     }
 

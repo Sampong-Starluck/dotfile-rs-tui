@@ -92,6 +92,25 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
 | `drain_stdout_to_log` (\r\n split, ansi strip, noise filter) | `InstallExecutionServiceImp.drainStdout` | ☑ |
 | `main.rs::run_in_terminal` suspend/inheritIO/restore/reset | `ui/ExternalRunner` | ☑ |
 
+## Live progress detail (Phase 12 — net-new, not a port; see plan/phase-12-improvement.md §12.1)
+
+| Item | Target | Done |
+|---|---|---|
+| parse winget's download-size / install-percent progress lines | `service/ProgressLineParser` | ☑ |
+| don't build a second streaming pipe | `InstallExecutionServiceImp.drainStdout` publishes `InstallProgressEvent` alongside `InstallLogEvent`, both through the existing `InstallLogBridge` | ☑ |
+| detail line (target app name(s)) + arrow-style progress bar in the install popup | `InstallLogPopup` + new `ui/component/ProgressBar` | ☑ |
+| graceful no-data fallback (managers/phases without a parseable line) | `InstallState.progressActive` only true while `InstallLogBridge.currentProgress()` is non-null | ☑ |
+
+## Installed-list update check + fuzzy filter (Phase 13 — net-new, not a port; see plan/phase-13-package-updates.md)
+
+| Item | Target | Done |
+|---|---|---|
+| parse `winget upgrade`'s id -> available-version | `service/OutputParsers.parseWingetUpgrade`/`parseUpgradeOutput` | ☑ |
+| don't spawn a process for managers with no known upgrade command | `SearchService.upgradeListCommand` returns `Optional.empty()`; `PackageQueryServiceImp.checkUpdates` short-circuits | ☑ |
+| "New Version" column, installed-version column untouched | `InstalledView` (3-column row) + `InstalledState.updates` (id -> version side-map) | ☑ |
+| client-side fuzzy filter of the installed list | `service/FuzzyMatcher` + `InstalledState.filterQuery`/`visiblePackages()` + `InstalledController` | ☑ |
+| `u`: actually update selected (update-eligible) packages | `InstallKind.UPDATE` + `InstallCommandService.updateCommand` + `CommandPlanner.buildUpdateCommands` + `CatalogActions.openUpdateConfirm`, reusing the existing install/remove streaming pipeline | ☑ |
+
 ## Chrome & packaging (Phases 10–11)
 
 | Item | Target | Done |
@@ -483,4 +502,139 @@ to its new home, not its old look. Paths relative to the Rust root (`../`).
      full PLAN.md §10.5 walkthrough and regenerating `default.iprof` before a release `native-pgo`
      build is the recommended way to get a profile that actually covers the UI hot paths — documented
      in `README.md`.
+- **Phase 12:** the phase file's original draft DoD said "MAIN panel"; implemented as an
+  enhancement to the existing `InstallLogPopup` instead. PLAN.md §5 fixes the popup-based design
+  ("This design deletes the Rust... `searchOrigin` focus bookkeeping — Simpler = correct") and
+  lists `InstallLogPopup` explicitly as one of the sealed `Popup` set; moving live detail into
+  the MAIN panel would re-litigate that fixed decision (new Esc/focus semantics for a modal
+  action) for no requested gain — the popup is already modal and already streams live. See
+  `plan/phase-12-improvement.md`'s "Design decisions" section.
+- **Phase 12:** `DecodeUtil.isNoiseLine` already matched and dropped every progress-bar frame
+  winget ever printed (the `t.contains("█")`, `"MB /"`-family, and all-digit-`%` checks) —
+  verified against two real captured `winget update`/`winget install` runs (§12.1): today's
+  install log never showed a raw progress frame at all. `InstallExecutionServiceImp.drainStdout`
+  now parses those same already-noise-classified lines via `ProgressLineParser` before discarding
+  them, instead of changing what counts as noise for the plain scrolling log.
+- **Phase 12:** `ProgressLineParser`/`ui/component/ProgressBar` never read winget's own bar
+  glyphs (only ever observed as a solid, undifferentiated `█` run — Windows Terminal doesn't
+  keep intermediate `\r`-overwritten frames in scrollback, so no partial-fill glyph was ever
+  actually capturable to design against). Only the numeric size/percent text next to the bar is
+  parsed; the app renders its own arrow-style `[======>>    ]` bar off that number, sidestepping
+  the unverifiable glyph-semantics question entirely.
+- **Phase 12:** `InstallProgressEvent` needs an explicit `cleared` boolean field rather than
+  inferring "no active progress" from `label == null` — a genuine progress line parsed before any
+  "Downloading …" line was seen (no label known yet) is legitimate in-progress data, not a signal
+  to hide the bar; conflating the two would have hidden real early-download progress. (Naming
+  note: the static factory is `InstallProgressEvent.noProgress()`, not `cleared()` — a record
+  component named `cleared` already generates a same-named instance accessor, and a static method
+  can't share that signature.) Same reasoning is why `InstallState.progressActive` is a separate
+  boolean rather than inferring visibility from `progressPercent > 0` (0% is itself a valid
+  in-progress reading, not "no progress").
+- **Phase 12:** progress is "latest value wins" (`InstallLogBridge.currentProgress()`, a single
+  volatile field), not queued like `InstallLogEvent` lines — winget can emit many animation
+  frames per second while downloading and there is no reason to replay each one; only the most
+  recent reading when a frame is drawn matters.
+- **Phase 12 verification:** `mvn compile`/`test` green (55 tests, incl. 5 new
+  `ProgressLineParserTest` cases built from the literal captured lines in §12.1, not synthetic
+  fixtures). `mise exec -- mvn -q spring-boot:run` reached the same point as every prior phase —
+  all new beans/types (`ProgressLineParser`, `InstallProgressEvent`, `ui/component/ProgressBar`)
+  resolve/compile cleanly, `TuiApp.onStart()` runs — and failed only at the same
+  `BackendException: Failed to get input console mode` recorded since Phase 5, not a regression.
+  Interactive verification (real small winget install/remove in Windows Terminal, confirming the
+  bar renders and degrades cleanly for a no-progress-data step) still needs a human run before
+  this phase is marked fully done.
+- **Phase 11 (post-review, native-image resource bug found via user report after Phase 12):**
+  the native `.exe`'s Sections and Shells panels rendered empty — `debug.log` showed
+  `AppCatalogServiceImp`'s `readAppsJson()`/`readShellsJson()` both throwing
+  `IllegalArgumentException: argument "src" is null` from Jackson's `ObjectMapper.readValue`.
+  Root cause: `config/NativeHints.java`'s existing `TamboUiResources` registrar only covers
+  `tamboui-tui`'s own `.properties` files — GraalVM native-image excludes **all** classpath
+  resources by default unless a hint says otherwise, so this app's own
+  `getClass().getResourceAsStream(...)` calls (`AppCatalogServiceImp` for
+  `data/apps.json`/`data/shells.json`, `ScriptServiceImp.scriptContent` for the 5
+  `scripts/<shell>/main_profile.*` deploy templates) returned `null` in the native exe while
+  resolving fine on the real JVM classpath (fat jar / `mvn spring-boot:run`) — which is why
+  Phase 11's own human verification pass didn't catch it (the DoD walkthrough didn't specifically
+  check catalog/shell-deploy content, only that the exe launched and the TUI rendered/responded).
+  Fixed with a second registrar, `NativeHints.AppDataResources`, registering
+  `data/apps.json`/`data/shells.json`/`scripts/*/*`. `mise run native` rebuilt clean (image heap
+  now reports 281 embedded resources, up from before the fix); this agent session still can't
+  interactively confirm the panels populate (no real console handle), so **a human re-running
+  `target\dotfile-java-tui.exe` in a real Windows Terminal to confirm Sections/Shells now show
+  content, and that shell deploy still works, is needed** before this is considered closed.
+- **Phase 13:** grepped the whole Rust tree for `run_list_installed`/`upgrade`/`outdated`/
+  `update`/`new_version` before designing anything — confirmed zero per-package update-check
+  concept in the original app (only the static whole-system `PmCommand` upgrade-shell-command
+  table, already ported, unrelated). Both the update column and the fuzzy filter are entirely
+  net-new, same situation as Phase 12.
+- **Phase 13:** `SearchResult` (already reused for both search and installed-list rows) was
+  deliberately NOT extended with a 4th "available version" field — that would force ~20 existing
+  call sites in `OutputParsers` to carry a meaningless value for the search/list case. Available
+  versions live in a separate `InstalledState.updates` id -> version map instead, merged into
+  each row by `id` at render time — mirrors how `InstalledState.names` already keeps
+  installed-only auxiliary data outside `SearchResult`.
+- **Phase 13:** `checkUpdates` is scoped to winget only for now (per explicit scope decision) —
+  `SearchService.upgradeListCommand(mgr)` returns `Optional<Cmd>`, empty for every other
+  manager, and `PackageQueryServiceImp.checkUpdates` returns an empty map without spawning any
+  process when empty, rather than guessing a command/format for managers whose real output
+  hasn't been captured (same "verify, don't assume" discipline Phase 12 established).
+- **Phase 13:** the fuzzy filter is fully client-side (`service/FuzzyMatcher`, simple
+  case-insensitive in-order subsequence match) — confirmed via code search that no client-side
+  filter pattern existed anywhere in the codebase before this; every existing "search box"
+  (`SearchInputPopup`) shells out to the manager's own remote search command and replaces the
+  whole result list, which is a different feature from narrowing an already-loaded list as you
+  type. `InstalledState.filtering` captures the full keyboard while editing (every key except
+  Up/Down/Enter/Esc becomes query text) so that typing letters that double as this view's own
+  bindings (`d` remove, `r` refresh) can't accidentally trigger an action mid-query — matches how
+  real fuzzy-finders (fzf etc.) behave.
+- **Phase 13 verification:** `mvn compile`/`test` green (61 tests, incl. new `FuzzyMatcherTest`
+  and two `OutputParsersTest` cases built from §13.1's literal captured `winget upgrade` output,
+  not synthetic fixtures — parsed all 16 real pending updates correctly). `mise exec -- mvn -q
+  spring-boot:run` reached the same point as every prior phase — all new
+  types/beans/state/wiring resolve cleanly — failing only at the same `BackendException: Failed
+  to get input console mode` recorded since Phase 5, not a regression. Interactive verification
+  (real winget updates showing correct new-version values, filter narrowing/clearing correctly
+  in a real Windows Terminal) still needs a human run before this phase is marked fully done.
+- **Phase 13 (post-review, human found `?` help popup showing only its first line):** root
+  cause was in `dev.tamboui.toolkit.elements.DialogElement.renderContent` itself (confirmed by
+  reading `tamboui-toolkit-0.4.0-sources.jar` directly, same technique as the Phase 7 popup-width
+  bug): a `DialogElement`'s single-child layout does `Constraint c = child.constraint(); if (c ==
+  null) { ... c = Constraint.length(child.preferredSize(-1,-1,ctx).heightOr(1)); }`.
+  `ui/component/Responsive` (used for `HelpPopup`'s scrollable body) returns `null` from
+  `constraint()` until it has rendered at least once, and its `preferredSize()` unconditionally
+  returns `Size.UNKNOWN` — and since `HelpPopup.view()` builds a **brand-new** `Responsive`
+  every frame (per the fluent-tree-per-frame model), `constraint()` is always null when queried.
+  That collapses to `Constraint.length(1)`: the body got exactly one row no matter what
+  `DIALOG_HEIGHT` was set to, cutting the popup down to its first content line ("── Global") with
+  nothing below. This is the same bug class `ui/component/Sized` was built to fix in Phase 7 (a
+  `Column` doing the identical "derive constraint from a null child constraint via
+  `preferredSize()`" fallback) — `HelpPopup` was just never wrapped in it. Fixed by wrapping the
+  body in `Sized.fill(body)` before handing it to `Popups.overlay` — `Sized.constraint()` returns
+  a fixed `Constraint.fill()` directly, never delegating to the child, so `DialogElement`'s
+  null-constraint fallback never triggers. Checked every other popup for the same bare-Responsive-
+  as-DialogElement-child pattern (`ConfirmActionPopup`, `CustomInputPopup`, `InstallLogPopup`,
+  `SearchInputPopup`, `SudoPopup`) — none of them pass a raw `Responsive` as DialogElement
+  content, so this was isolated to `HelpPopup`.
+- **Phase 13 (post-review, human found long version strings truncated):** `InstalledView`'s
+  Version/New-Version columns were a fixed 16 cols, silently truncating real-world long version
+  strings (e.g. yt-dlp's FFmpeg build `N-123778-g3b55818764-20260331`, 30 chars, from the human's
+  own real `winget upgrade` capture in §13.1). Changed both to size dynamically from the longest
+  actual value among the currently-visible rows (`InstalledView.columnWidth`), clamped to
+  `[10, 40]` rather than a fixed width — short versions like "7.4.1" keep the column compact, long
+  ones widen to fit (up to the 40-col cap, chosen with headroom above the longest real value seen
+  so far).
+- **Phase 13 (post-review, human pointed out the update-check had no update action):** the
+  initial pass only showed available updates; it didn't let the user actually run one. Added `u`
+  on the Installed view (mirrors the existing `d` remove binding), reusing the exact same
+  `InstallController`/`InstallExecutionService` streaming pipeline install/remove already use —
+  no new execution mechanism, just a third `InstallKind.UPDATE` case threaded through it (log
+  message, popup title). New `InstallCommandService.updateCommand(mgr, pkg)` mirrors the
+  existing per-manager `installCommand`/`removeCommand` tables' shape and rigor (a reasonable
+  single-package-upgrade command per manager, e.g. `winget upgrade --id <pkg> -e`, `apt install
+  --only-upgrade -y <pkg>` — same level of verification as the existing install/remove tables,
+  which were never live-captured per-manager either, only winget's *output-parsing* format was).
+  `CatalogActions.openUpdateConfirm` filters the current selection down to ids present in
+  `st.installed.updates` before building commands, so selecting a package with no pending update
+  and pressing `u` is a no-op (same as an empty selection everywhere else in the app) rather than
+  running a meaningless upgrade command.
 - (add more here)

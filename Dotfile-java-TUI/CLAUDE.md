@@ -37,13 +37,75 @@ Compile after every file: `mise exec -- mvn -q compile`.
 
 ## STATUS
 
-- Current phase: **phase-11 (native-image build succeeds; interactive
-  acceptance-run row pending a human manual run — see below)** (next: verify
-  phase-11's native exe interactively; phase-11 is the last phase in the
-  main sequence — phase-12 is an unscoped backlog item, not next in order)
-- Completed phases: phase-01 through phase-10 (all Definition of Done rows,
+- Current phase: **phase-13 (implemented; interactive verification pending a
+  human run)** — installed-list update check ("New Version" column, winget
+  only for now, via real captured `winget upgrade` output — see
+  `plan/phase-13-package-updates.md` §13.1) + a client-side fuzzy filter for
+  the installed list (`service/FuzzyMatcher`, `/` to edit, type to narrow).
+  Both entirely net-new (confirmed via Rust-tree grep: zero per-package
+  update-check concept, zero client-side filter concept anywhere in the
+  original app or this codebase before now). `mvn compile`/`test` green (61
+  tests, incl. new `FuzzyMatcherTest` + two `OutputParsersTest` cases built
+  from the literal captured `winget upgrade` output — all 16 real pending
+  updates parsed correctly). `spring-boot:run` reaches the same known
+  `BackendException` checkpoint as every prior phase — not a regression.
+  Needs a human run in a real Windows Terminal (real update values, filter
+  narrow/clear) before this phase is marked fully done.
+  **Post-review (human found two real bugs on first interactive pass):**
+  (1) `?` help popup showed only its first content line — root-caused to
+  `DialogElement`'s single-child layout falling back to `Constraint.length(1)`
+  for a freshly-built `Responsive` child (`constraint()` null pre-render,
+  `preferredSize()` always `Size.UNKNOWN`) — confirmed by reading
+  `tamboui-toolkit-0.4.0-sources.jar` directly; fixed by wrapping
+  `HelpPopup`'s body in `Sized.fill(...)`, same fix class as Phase 7's
+  `Sized` component. (2) `InstalledView`'s version columns were a fixed 16
+  cols, truncating real long version strings (e.g. yt-dlp's FFmpeg build,
+  30 chars) — changed to size dynamically from the longest value on screen,
+  clamped `[10,40]`. (3) the human also pointed out the feature was
+  incomplete: showing available updates with no way to actually run one.
+  Added `u` on the Installed view (mirrors `d` remove) — new
+  `InstallKind.UPDATE`, `InstallCommandService.updateCommand` (per-manager
+  single-package upgrade command table, e.g. `winget upgrade --id <pkg>
+  -e`), `CommandPlanner.buildUpdateCommands`,
+  `CatalogActions.openUpdateConfirm` (filters selection down to ids with an
+  actual pending update first) — reuses the exact same install/remove
+  streaming pipeline, no new execution mechanism. All fixed, `mvn test`
+  green (62 tests, incl. new `InstallCommandServiceTest
+  .updateCommandBuildsTheWingetLine`).
+- Phase-12 (previous phase, interactive verification pending a human run).
+  Phase-11's interactive acceptance-run row (`target\dotfile-
+  java-tui.exe` in a real Windows Terminal, PLAN.md §10.5 /
+  phase-11-native-image.md §11.4) has been confirmed by a human — **but see
+  the Phase-11 post-review bug note below**: after Phase 12, the user
+  reported the native exe's Sections/Shells panels rendering empty, root-
+  caused to a native-image resource-hint gap (fixed; needs a human re-check).
+  Phase-12
+  (backlog item, scoped 2026-08-01 against two real captured `winget update`/
+  `winget install` runs — see `plan/phase-12-improvement.md` §12.1) is coded:
+  `service/ProgressLineParser` parses the download-size/install-percent
+  progress lines `DecodeUtil.isNoiseLine` was already dropping; a new
+  `event/InstallProgressEvent` ("latest wins", not queued) flows through the
+  existing `InstallLogBridge`/`TuiApp.drainInstallLog` pipeline into
+  `InstallState`; `InstallLogPopup` now shows a target-app detail line + a
+  new `ui/component/ProgressBar` (arrow-style) above the log, degrading
+  cleanly (bar hidden) when a step has no parseable progress data — confirmed
+  real from the second capture (a `.zip`/`.msixbundle` install phase with no
+  progress line at all). Design decision: kept as a popup enhancement rather
+  than moved into the MAIN panel, since PLAN.md §5 fixes `InstallLogPopup` as
+  part of the sealed `Popup` set (full rationale in the plan file). `mvn
+  compile`/`test` green (55 tests, incl. 5 new `ProgressLineParserTest` cases
+  built from the literal captured lines, not synthetic fixtures). `mise exec
+  -- mvn -q spring-boot:run` reached the same point as every prior phase —
+  all new types resolve/wire cleanly, `TuiApp.onStart()` runs — failing only
+  at the same `BackendException: Failed to get input console mode` recorded
+  since Phase 5, not a regression. The last Definition-of-Done row — an
+  interactive small-package install/remove in a real Windows Terminal
+  confirming the bar renders and degrades cleanly — still needs a human run
+  before phase-12 is marked fully done.
+- Completed phases: phase-01 through phase-11 (all Definition of Done rows,
   incl. the interactive ones, confirmed by a human running `mise run dev`/
-  the fat jar in a real Windows Terminal window)
+  the fat jar / `target\dotfile-java-tui.exe` in a real Windows Terminal
+  window)
 - Phase 11: `mvn compile`/`test` green (50 tests, unchanged — no new business
   logic). `mise run native` (`mvn -Pnative native:compile`) succeeds:
   `target/dotfile-java-tui.exe`, 67.7MB, ~3 min build. Two real
@@ -91,10 +153,29 @@ Compile after every file: `mise exec -- mvn -q compile`.
   but not a verified interactive-workload speedup; a human re-collecting
   `default.iprof` from the full §10.5 walkthrough before a release
   `native-pgo` build is recommended (documented in `README.md`).
-  **Please run `target\dotfile-java-tui.exe` yourself in a real Windows
-  Terminal and confirm the acceptance checklist in
-  `plan/phase-11-native-image.md` §11.4 / PLAN.md §10.5** to close out
-  phase-11's remaining Definition of Done row.
+  A human has since run `target\dotfile-java-tui.exe` in a real Windows
+  Terminal and confirmed the acceptance checklist in
+  `plan/phase-11-native-image.md` §11.4 / PLAN.md §10.5. Phase 11 is fully
+  done.
+- **Phase 11 (post-review, 2026-08-01, found via user report after Phase 12
+  landed):** the native exe's Sections/Shells panels rendered empty.
+  `debug.log` showed `AppCatalogServiceImp.readAppsJson`/`readShellsJson`
+  throwing `IllegalArgumentException: argument "src" is null` from Jackson.
+  Root cause: `config/NativeHints.java` only registered `tamboui-tui`'s own
+  `.properties` resources for native-image inclusion — GraalVM excludes all
+  classpath resources by default otherwise, so this app's own
+  `getResourceAsStream` calls for `data/apps.json`/`data/shells.json`
+  (`AppCatalogServiceImp`) and the 5 `scripts/<shell>/main_profile.*` deploy
+  templates (`ScriptServiceImp.scriptContent`) returned `null` in the native
+  exe while resolving fine on the JVM classpath (fat jar/`spring-boot:run`) —
+  which is why Phase 11's own human verification pass didn't catch it (that
+  DoD walkthrough confirmed the exe launched/rendered, not specifically that
+  the catalog populated). Fixed with a second `RuntimeHintsRegistrar`,
+  `NativeHints.AppDataResources`, registering `data/apps.json`,
+  `data/shells.json`, `scripts/*/*`. `mise run native` rebuilds clean (image
+  heap resource count went up, confirming inclusion); **needs a human to
+  re-run `target\dotfile-java-tui.exe` and confirm Sections/Shells now show
+  content and shell deploy still works** before this is considered closed.
 - Phase 10: `mvn compile`/`test` green (50 tests, unchanged — this phase adds
   no new business logic to unit-test, only UI chrome + packaging).
   `mise run build` produces `target/dotfile-java-tui-0.1.0.jar`; running it
@@ -177,10 +258,6 @@ Compile after every file: `mise exec -- mvn -q compile`.
   single shared home for confirm/search/custom popup construction + installed
   refresh, reused by all four catalog-adjacent controllers) are logged in
   FEATURE-PARITY.md.
-- Backlog (not a phase in sequence): `plan/phase-12-improvement.md` — MAIN-panel
-  live detail (streaming command log + download progress bar), requested by the
-  user during Phase 7 verification, explicitly deferred as a post-parity
-  improvement. Not scoped; revisit after Phase 11.
 - Phase 6: `mvn compile`/`test` green; `mise run dev` reaches `ToolkitApp.run()`
   (all beans, incl. the new `ui/component/Responsive` and its use in
   `ManagersView`/`CommandsView`, resolve cleanly) and, when launched from the

@@ -1,6 +1,7 @@
 package com.sampong.dotfile.ui.feature.install;
 
 import com.sampong.dotfile.event.InstallLogEvent;
+import com.sampong.dotfile.event.InstallProgressEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.jspecify.annotations.Nullable;
 import org.springframework.context.event.EventListener;
@@ -21,10 +22,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 public class InstallLogBridge {
 
     private volatile @Nullable ConcurrentLinkedQueue<String> sink;
+    private volatile @Nullable InstallProgressEvent latestProgress;
     private volatile @Nullable Runnable renderWaker;
 
     public void attach(ConcurrentLinkedQueue<String> queue) {
         this.sink = queue;
+        this.latestProgress = null;
     }
 
     /** Detaches the current sink (e.g. on Esc, while the worker still runs to completion
@@ -33,6 +36,7 @@ public class InstallLogBridge {
      *  shared across every install/remove run. */
     public void detach() {
         this.sink = null;
+        this.latestProgress = null;
     }
 
     public void setRenderWaker(Runnable waker) {
@@ -45,6 +49,25 @@ public class InstallLogBridge {
         if (queue != null) {
             queue.add(event.line());
         }
+        wake();
+    }
+
+    /** "Latest wins" (PLAN.md §12.1): every animation frame is a fresh event, so nothing queues
+     *  them — only the most recent progress reading is kept, drained by {@code TuiApp} per
+     *  frame, same as {@link #currentProgress()}'s callers expect. */
+    @EventListener
+    public void on(InstallProgressEvent event) {
+        if (sink != null) {
+            latestProgress = event.cleared() ? null : event;
+        }
+        wake();
+    }
+
+    public @Nullable InstallProgressEvent currentProgress() {
+        return latestProgress;
+    }
+
+    private void wake() {
         Runnable waker = renderWaker;
         if (waker != null) {
             waker.run();

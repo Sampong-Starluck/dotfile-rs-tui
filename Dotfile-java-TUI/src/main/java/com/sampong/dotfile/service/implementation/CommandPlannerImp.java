@@ -48,6 +48,11 @@ public class CommandPlannerImp implements CommandPlanner {
     }
 
     @Override
+    public List<String> buildUpdateCommands(Set<String> selectedIds, String mgr) {
+        return selectedIds.stream().map(id -> installCommandService.updateCommand(mgr, id)).toList();
+    }
+
+    @Override
     public List<String> displayNames(List<AppSection> apps, Set<String> ids) {
         return ids.stream().map(id -> displayName(apps, id)).toList();
     }

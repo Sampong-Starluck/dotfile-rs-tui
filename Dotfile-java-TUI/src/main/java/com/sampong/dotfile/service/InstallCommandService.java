@@ -14,4 +14,9 @@ public interface InstallCommandService {
     String installCommand(String mgr, String pkg);
 
     String removeCommand(String mgr, String pkg);
+
+    /** Upgrade a single already-installed package to its available version (Phase 13,
+     *  net-new — no Rust prior art; the original app only has whole-system upgrade commands,
+     *  already ported as {@code PmCommand}). */
+    String updateCommand(String mgr, String pkg);
 }

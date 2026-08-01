@@ -60,7 +60,14 @@ public class InstallController {
 
     private void begin(AppState st, List<String> commands, @Nullable String sudoPassword) {
         st.install.log.clear();
-        st.install.log.add(st.install.kind == InstallKind.REMOVE ? "Starting removal…" : "Starting installation…");
+        st.install.log.add(switch (st.install.kind) {
+            case REMOVE -> "Starting removal…";
+            case UPDATE -> "Starting update…";
+            case INSTALL -> "Starting installation…";
+        });
+        List<String> names = commandPlanner.displayNames(
+                st.catalog.apps != null ? st.catalog.apps : List.of(), st.catalog.selectedIds);
+        st.install.targetLabel = names.isEmpty() ? null : String.join(", ", names);
         st.install.logQueue = new ConcurrentLinkedQueue<>();
         st.install.stdinQueue = new LinkedBlockingQueue<>();
         logBridge.attach(st.install.logQueue);

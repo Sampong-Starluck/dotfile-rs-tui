@@ -4,8 +4,10 @@ import com.sampong.dotfile.model.SearchResult;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * Port of {@code ../src/service/search_service.rs} decoding/parsing (command tables
@@ -46,6 +48,16 @@ public final class OutputParsers {
             case "scoop"                 -> parseScoopSearch(text);
             case "choco"                 -> parseChocoList(text);
             default                      -> List.of();
+        };
+    }
+
+    /** Port target: id -> available-version, for the Phase 13 "New Version" column. Net-new (no
+     *  Rust prior art — see plan/phase-13-package-updates.md); only winget is supported so far,
+     *  every other manager degrades cleanly to an empty map. */
+    public static Map<String, String> parseUpgradeOutput(String mgr, String text) {
+        return switch (mgr) {
+            case "winget" -> parseWingetUpgrade(text);
+            default       -> Map.of();
         };
     }
 
@@ -101,6 +113,66 @@ public final class OutputParsers {
             }
         }
         return results;
+    }
+
+    /**
+     * Parse {@code winget upgrade} tabular output into id -> available-version. Same technique
+     * as {@link #parseWingetSearch} (header column detection + code-point slicing), with an
+     * extra "Available" column between Version and Source. Built against real captured output
+     * (PLAN.md phase-13 §13.1), e.g.:
+     * <pre>
+     * Name          Id                          Version   Available   Source
+     * ------------------------------------------------------------------------
+     * lazygit       JesseDuffield.lazygit        0.63.0    0.63.1      winget
+     * 16 upgrades available.
+     * </pre>
+     * The trailing "N upgrades available." summary line is short enough to always fail the
+     * {@code len < availStart} guard below, same as {@code parseWingetSearch}'s progress-frame
+     * filtering — no separate check needed.
+     */
+    private static Map<String, String> parseWingetUpgrade(String output) {
+        Map<String, String> updates = new LinkedHashMap<>();
+        int[] headerOffsets = null; // {idStart, verStart, availStart, srcStart}
+
+        for (String segment : output.split("[\r\n]")) {
+            String line = TextUtil.stripAnsi(segment);
+
+            if (line.trim().isEmpty()) continue;
+            if (line.contains("█") || line.contains("▒") || line.contains("KB /") || line.contains("MB /")) continue;
+            String trimmed = line.trim();
+            if (trimmed.equals("-") || trimmed.equals("\\") || trimmed.equals("|") || trimmed.equals("/")) continue;
+
+            if (headerOffsets == null) {
+                String lower = line.toLowerCase(Locale.ROOT);
+                if (lower.contains("name") && lower.contains("id") && lower.contains("version") && lower.contains("available")) {
+                    int idPos = orElseFindCol(line, "Id", "id");
+                    int verPos = orElseFindCol(line, "Version", "version");
+                    int availPos = orElseFindCol(line, "Available", "available");
+                    int srcPos = orElseFindCol(line, "Source", "source");
+                    if (idPos > 0 && verPos > idPos && availPos > verPos) {
+                        headerOffsets = new int[] { idPos, verPos, availPos, srcPos >= 0 ? srcPos : Integer.MAX_VALUE };
+                    }
+                }
+                continue;
+            }
+
+            if (isDashSeparatorLine(line)) continue;
+
+            int idStart = headerOffsets[0];
+            int verStart = headerOffsets[1];
+            int availStart = headerOffsets[2];
+            int srcStart = headerOffsets[3];
+            int[] cps = line.codePoints().toArray();
+            int len = cps.length;
+            if (len < availStart) continue;
+
+            String id = codePointSlice(cps, idStart, Math.min(verStart, len)).trim();
+            String available = codePointSlice(cps, availStart, Math.min(srcStart, len)).trim();
+            if (!id.isEmpty() && !available.isEmpty()) {
+                updates.put(id, available);
+            }
+        }
+        return updates;
     }
 
     private static List<SearchResult> parseScoopSearch(String output) {

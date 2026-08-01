@@ -14,7 +14,11 @@ import com.sampong.dotfile.ui.feature.install.InstallController;
 import com.sampong.dotfile.ui.state.AppState;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Shared actions used by every feature that touches {@code st.catalog.selectedIds} (Sections,
@@ -54,6 +58,25 @@ public final class CatalogActions {
                 () -> installController.start(st, InstallKind.REMOVE, commands));
     }
 
+    /** {@code u} on Installed: build the update confirm popup for the selected packages that
+     *  actually have a pending update (Phase 13, net-new) — selecting a package with no update
+     *  available and pressing {@code u} is a no-op, same as an empty selection. */
+    public static void openUpdateConfirm(AppState st, CommandPlanner commandPlanner, InstallController installController) {
+        String mgr = st.platform.activeBinary();
+        Set<String> updatable = st.catalog.selectedIds.stream()
+                .filter(st.installed.updates::containsKey)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<String> commands = commandPlanner.buildUpdateCommands(updatable, mgr);
+        if (commands.isEmpty()) {
+            return;
+        }
+        st.popup = new ConfirmActionPopup(
+                "Update " + commands.size() + " package(s)?",
+                "runs with " + mgr,
+                commands,
+                () -> installController.start(st, InstallKind.UPDATE, commands));
+    }
+
     /** {@code /}: open the search popup pre-filled with the last query. */
     public static void openSearchPopup(AppState st, PackageQueryService packageQueryService) {
         st.popup = new SearchInputPopup(new TextInputState(st.search.lastQuery),
@@ -87,10 +110,13 @@ public final class CatalogActions {
      *  funnel through here, so {@code autoLoaded} is set unconditionally: whichever path loads
      *  first, the startup auto-load (PLAN.md §7.1.3) must never fire a redundant second query. */
     public static void refreshInstalled(AppState st, PackageQueryService packageQueryService) {
+        String mgr = st.platform.activeBinary();
         st.installed.packages = new ArrayList<>();
         st.installed.names.clear();
         st.installed.loading = true;
         st.installed.autoLoaded = true;
-        st.installed.future = packageQueryService.listInstalled(st.platform.activeBinary());
+        st.installed.future = packageQueryService.listInstalled(mgr);
+        st.installed.updates = new HashMap<>();
+        st.installed.updatesFuture = packageQueryService.checkUpdates(mgr);
     }
 }
