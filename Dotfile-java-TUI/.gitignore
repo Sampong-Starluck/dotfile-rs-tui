@@ -1,7 +1,0 @@
-target/
-debug.log
-api-*.txt
-default.iprof
-.mise.local.toml
-.idea/
-.vscode/

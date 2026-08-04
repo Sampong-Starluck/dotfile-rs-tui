@@ -2,6 +2,11 @@
 
 You are implementing a phased migration plan. **Do not improvise scope.**
 
+**Repo layout note:** this project used to live in a `Dotfile-java-TUI/` subdirectory next to the
+original Rust implementation's source at `../src/**`. The Rust source has since been removed and
+this project moved up to the repo root — it's still recoverable from git history (`git log
+--diff-filter=D -- src/`) if a "behavior truth" question below needs the original Rust code.
+
 ## Before writing ANY code
 
 1. Read `PLAN.md` fully (rules #0/#1, §4 conventions, §4a Lombok, §5 UI design, §5a state, §5b 200 ms rule).
@@ -15,8 +20,9 @@ You are implementing a phased migration plan. **Do not improvise scope.**
   `FEATURE-PARITY.md` and update `## STATUS` below.
 - TamboUI names: if a class/method from the plan doesn't compile, grep the
   `api-*.txt` files (generated in phase 1) for the real name — never invent.
-- Rust sources at `../src/**` = behavior truth (commands, parsers, paths,
-  state transitions). NOT UI structure, NOT hacks.
+- Rust behavior truth (commands, parsers, paths, state transitions) lives in git history now
+  that `../src/**` is gone from the working tree — see the repo layout note above. NOT UI
+  structure, NOT hacks.
 - Services: interface in `service/`, `@Service` class `<Name>Imp` in
   `service/implementation/`. Beans: `@Slf4j @RequiredArgsConstructor`.
   No `@Data`/`@Setter`/`@SneakyThrows`. No Lombok on records/state.

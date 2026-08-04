@@ -55,6 +55,7 @@ public class AppCatalogServiceImp implements AppCatalogService {
         return out;
     }
 
+    @SuppressWarnings("null")
     @Override
     public List<ShellEntry> readShellsJson() {
         try (InputStream in = getClass().getResourceAsStream("/data/shells.json")) {
